@@ -37,6 +37,10 @@ const PRONOUN_OPENERS: &[&str] = &["that", "this", "it", "he", "she", "they", "w
 
 const FILLER_WORDS: &[&str] = &["um", "uh", "like", "you know", "kind of", "sort of"];
 
+const ABSOLUTE_CUES: &[&str] = &[
+    "everyone", "everybody", "nobody", "no one", "never", "always", "all of us",
+];
+
 const MIN_MS: u64 = 20_000;
 const MAX_MS: u64 = 90_000;
 
@@ -96,10 +100,12 @@ pub fn propose(t: &Transcript, source_duration_ms: u64, proposal_count: usize) -
             .collect::<Vec<_>>()
             .join(" ");
         let window_lower = window_text.to_lowercase();
+        let window = &sentences[start_idx..=end_idx];
 
         // --- Feature detection -> honest rubric scores -------------------
         let first_word = opener_lower.split_whitespace().next().unwrap_or("");
-        let pronoun_open = PRONOUN_OPENERS.contains(&first_word);
+        let vague_open = is_vague_opener(&opener_lower);
+        let pronoun_open = PRONOUN_OPENERS.contains(&first_word) || vague_open;
         let hook = HOOK_STARTS.iter().any(|h| opener_lower.starts_with(h))
             || opener.text.contains('?');
         let contrast = CONTRAST_CUES.iter().any(|c| window_lower.contains(c));
@@ -118,17 +124,28 @@ pub fn propose(t: &Transcript, source_duration_ms: u64, proposal_count: usize) -
         let filler_rate = filler_count as f32 / word_count as f32;
         let question_open = opener.text.contains('?')
             || ["what", "why", "how", "who", "when"].contains(&first_word);
+        let repeated_claim = has_repeated_claim(window);
+        let exchange = has_reaction_exchange(window);
+        let absolute_claim = contains_absolute_claim(&window_lower);
 
         let self_contained: u8 = match (pronoun_open, reference) {
             (false, false) => if hook { 5 } else { 4 },
             (true, false) => 3,
             (_, true) => 2,
         };
-        let opening_strength: u8 = if hook && question_open { 5 } else if hook { 4 } else { 3 };
+        let opening_strength: u8 = if vague_open {
+            3
+        } else if hook && question_open || absolute_claim {
+            5
+        } else if hook {
+            4
+        } else {
+            3
+        };
         let specificity: u8 =
-            if has_number && contrast { 5 } else if has_number || contrast { 4 } else { 3 };
-        let tension: u8 = if contrast && question_open { 5 } else if contrast { 4 } else if question_open { 4 } else { 3 };
-        let payoff: u8 = if payoff_cue && end_score >= 2.5 { 5 } else if payoff_cue || end_score >= 2.2 { 4 } else { 3 };
+            if repeated_claim || has_number && contrast { 5 } else if absolute_claim || has_number || contrast { 4 } else { 3 };
+        let tension: u8 = if exchange || contrast && question_open { 5 } else if contrast || question_open { 4 } else { 3 };
+        let payoff: u8 = if repeated_claim || payoff_cue && end_score >= 2.5 { 5 } else if exchange || payoff_cue || end_score >= 2.2 { 4 } else { 3 };
         let clarity: u8 = if filler_rate > 0.09 { 3 } else if filler_rate > 0.05 { 4 } else { 5 };
         let context_dependency: u8 = if reference { 4 } else if pronoun_open { 3 } else { 1 };
         let slop_risk: u8 = 1; // continuous faithful excerpt, no effects
@@ -151,9 +168,13 @@ pub fn propose(t: &Transcript, source_duration_ms: u64, proposal_count: usize) -
             + tension as f32 * 1.0
             + specificity as f32 * 0.8
             - context_dependency as f32 * 1.5
-            + end_score;
+            + end_score
+            + if repeated_claim { 4.0 } else { 0.0 }
+            + if exchange { 3.0 } else { 0.0 }
+            + if absolute_claim { 1.5 } else { 0.0 }
+            - if vague_open { 4.0 } else { 0.0 };
 
-        let headline = make_headline(opener);
+        let headline = make_headline(best_headline_sentence(window));
         let opening_quote = quote_head(&opener.text, 12);
         let closing_quote = quote_tail(&closer.text, 12);
         let selection_reason = make_reason(hook, question_open, contrast, payoff_cue, has_number);
@@ -196,6 +217,81 @@ pub fn propose(t: &Transcript, source_duration_ms: u64, proposal_count: usize) -
         kept.push(cand);
     }
     kept
+}
+
+fn is_vague_opener(text: &str) -> bool {
+    let words = text.split_whitespace().count();
+    words <= 9
+        && (text.contains("that")
+            || text.contains("this")
+            || text.contains("those")
+            || text.contains(" it ")
+            || text.starts_with("it "))
+}
+
+fn normalized_claim(text: &str) -> String {
+    text.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn has_repeated_claim(sentences: &[Sentence]) -> bool {
+    for (i, a) in sentences.iter().enumerate() {
+        let a = normalized_claim(&a.text);
+        for b in sentences.iter().skip(i + 1) {
+            let b = normalized_claim(&b.text);
+            let shorter = if a.len() <= b.len() { &a } else { &b };
+            let longer = if a.len() <= b.len() { &b } else { &a };
+            if shorter.split_whitespace().count() >= 3 && longer.contains(shorter) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn has_reaction_exchange(sentences: &[Sentence]) -> bool {
+    sentences.windows(2).any(|pair| {
+        pair[0].text.contains('?')
+            && pair[1].text.split_whitespace().count() <= 12
+            && pair[1].start_ms.saturating_sub(pair[0].end_ms) <= 1_500
+    })
+}
+
+fn contains_absolute_claim(text: &str) -> bool {
+    let normalized = format!(" {} ", normalized_claim(text));
+    ABSOLUTE_CUES
+        .iter()
+        .any(|cue| normalized.contains(&format!(" {} ", cue)))
+}
+
+fn repeats_elsewhere(sentence: &Sentence, sentences: &[Sentence]) -> bool {
+    let claim = normalized_claim(&sentence.text);
+    claim.split_whitespace().count() >= 3
+        && sentences
+            .iter()
+            .any(|other| !std::ptr::eq(sentence, other) && normalized_claim(&other.text).contains(&claim))
+}
+
+fn best_headline_sentence(sentences: &[Sentence]) -> &Sentence {
+    sentences
+        .iter()
+        .take(5)
+        .max_by_key(|s| {
+            let lower = s.text.to_lowercase();
+            let words = s.text.split_whitespace().count();
+            let repeated = repeats_elsewhere(s, sentences) as i32;
+            let absolute = contains_absolute_claim(&lower) as i32;
+            let question = s.text.contains('?') as i32;
+            let concise = (3..=16).contains(&words) as i32;
+            repeated * 5 + absolute * 3 + question * 2 + concise
+                - is_vague_opener(&lower) as i32 * 3
+        })
+        .unwrap_or(&sentences[0])
 }
 
 fn make_headline(opener: &Sentence) -> String {
@@ -304,5 +400,37 @@ mod tests {
             avg_confidence: 0.0,
         };
         assert!(propose(&t, 60_000, 3).is_empty());
+    }
+
+    #[test]
+    fn repeated_claim_and_reaction_surface_as_top_candidate() {
+        let t = transcript_from(&[
+            ("I believe the solution to making everybody happy is to give them what they want.", 0),
+            ("Let's get them all rich.", 200),
+            ("Let's get them all fit and healthy, and then let's get them all happy.", 200),
+            ("Are those things even possible?", 200),
+            ("Can everyone be rich?", 100),
+            ("Everyone can be rich.", 100),
+            ("Here's my thought exercise for you.", 200),
+            ("Everyone can be rich.", 200),
+            ("Everything I have created about making money is free because charging would ruin the point.", 200),
+            ("Yes, everybody can be rich, and the reason is that knowledge and productive tools can spread.", 200),
+        ]);
+        let duration = t.words.last().unwrap().end_ms + 500;
+        let cands = propose(&t, duration, 3);
+        assert!(!cands.is_empty());
+        let headline = cands[0].headline.to_lowercase();
+        assert!(
+            headline.contains("everyone") && headline.contains("rich"),
+            "unexpected top candidate: {}",
+            cands[0].headline
+        );
+    }
+
+    #[test]
+    fn short_demonstrative_question_is_not_self_contained() {
+        assert!(is_vague_opener("how would that work?"));
+        assert!(is_vague_opener("are those things possible?"));
+        assert!(!is_vague_opener("can everyone be rich?"));
     }
 }
