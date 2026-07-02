@@ -36,6 +36,20 @@ pub fn start(state: AppState, id: String) -> Result<(), String> {
         let hid = id.clone();
         if let Err(e) = run(state.clone(), id, handle.clone(), token).await {
             tracing::error!(project = %hid, "pipeline task error: {e:#}");
+            let message = format!("Processing failed unexpectedly. {e}");
+            if let Ok(mut project) = state.store.load_project(&hid).await {
+                project.status = JobState::Failed;
+                project.error = Some(message.clone());
+                if let Some(stage) = project
+                    .stages
+                    .iter_mut()
+                    .find(|stage| stage.started_at.is_some() && stage.completed_at.is_none())
+                {
+                    stage.error = Some(message.clone());
+                }
+                state.store.save_project(&project).await.ok();
+            }
+            handle.emit(json!({"type": "done", "status": "failed"}));
         }
         handle.running.store(false, Ordering::SeqCst);
         handle.clear_live();
