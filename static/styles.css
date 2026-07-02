@@ -209,3 +209,17 @@ footer { margin-top: 44px; border-top: 1px solid var(--hairline); padding-top: 1
   .actions { grid-column: 1 / -1; flex-direction: row; }
   .results-head { flex-direction: column; align-items: flex-start; }
 }
+@media (max-width: 480px) {
+  .shell { padding: 20px 16px 40px; }
+  header { gap: 12px; }
+  #ai-btn { flex: none; }
+  .source-line { align-items: flex-start; gap: 10px; }
+  .progress { grid-template-columns: repeat(2, 1fr); }
+  .step strong { white-space: normal; }
+  .results-actions { width: 100%; }
+  .results-actions button { flex: 1; padding-inline: 8px; }
+  .clip { grid-template-columns: 1fr; gap: 14px; padding: 16px; }
+  .preview { width: min(180px, 100%); }
+  .actions { grid-column: auto; }
+  .actions button { min-height: 44px; }
+}
