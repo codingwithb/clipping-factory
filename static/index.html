@@ -117,7 +117,7 @@
         <select id="provider">
           <option value="openai">OpenAI</option>
           <option value="anthropic">Anthropic</option>
-          <option value="offline">Offline heuristic (no key)</option>
+          <option value="offline">Local ranking (no key)</option>
         </select>
       </label>
       <label id="model-row">Model
@@ -126,7 +126,7 @@
       <label id="key-row">API key
         <input id="api-key" type="password" placeholder="sk-…" autocomplete="off">
       </label>
-      <p id="offline-note" class="muted small hidden">Offline mode uses a deterministic heuristic — decent openings and clean endings, but connect a provider for editorial-grade selection.</p>
+      <p id="offline-note" class="muted small hidden">Local ranking scans the full transcript for strong openings, reactions, repeated claims, clean endings, and standalone clarity. No model or API key is required.</p>
       <p id="test-result" class="small hidden"></p>
       <div class="modal-actions">
         <button id="modal-close" type="button">Close</button>

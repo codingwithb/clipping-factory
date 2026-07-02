@@ -371,7 +371,7 @@ fn make_reason(
     }
     let mut reason = parts.join(", ");
     reason = format!(
-        "The excerpt {}. Selected by the offline heuristic; connect an AI provider for editorial-grade selection.",
+        "The excerpt {}. Selected by local ranking across the full transcript.",
         reason
     );
     reason

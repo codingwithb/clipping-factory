@@ -40,7 +40,7 @@ pub async fn propose(
     match provider {
         PROVIDER_OFFLINE => Ok(SelectionOutcome {
             candidates: heuristic::propose(transcript, source.duration_ms, proposals),
-            selector: "offline heuristic".into(),
+            selector: "local ranking".into(),
         }),
         PROVIDER_OPENAI | PROVIDER_ANTHROPIC => {
             let key = settings
@@ -78,7 +78,7 @@ pub async fn propose(
 /// Test connectivity for the configured provider (PRD §14.1 `/api/settings/ai/test`).
 pub async fn test_connection(settings: &AiSettings) -> Result<String> {
     match settings.provider.as_str() {
-        PROVIDER_OFFLINE => Ok("Offline heuristic mode — no key needed. Connect OpenAI or Anthropic for editorial-grade selection.".into()),
+        PROVIDER_OFFLINE => Ok("Local ranking is ready — no API key needed.".into()),
         PROVIDER_OPENAI => {
             let key = settings.api_key.as_deref().filter(|k| !k.trim().is_empty())
                 .ok_or_else(|| anyhow!("Enter an OpenAI API key first."))?;

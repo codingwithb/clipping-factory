@@ -49,7 +49,7 @@
       const s = await (await fetch("/api/settings/ai")).json();
       const dot = $("ai-dot");
       dot.className = "dot";
-      if (s.provider === "offline") { dot.classList.add("offline"); $("ai-label").textContent = "Offline heuristic"; }
+      if (s.provider === "offline") { dot.classList.add("offline"); $("ai-label").textContent = "Local ranking"; }
       else if (s.connected) { dot.classList.add("on"); $("ai-label").textContent = `${s.provider} · ${s.model}`; }
       else { $("ai-label").textContent = "AI connection"; }
       $("provider").value = s.provider || "openai";
