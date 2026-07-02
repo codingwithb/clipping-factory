@@ -23,6 +23,12 @@ pub fn plan_counts(source_duration_ms: u64) -> (usize, usize) {
     (target, proposals)
 }
 
+/// Local ranking is cheap, so keep every strong, distinct moment the
+/// validator can reasonably use instead of applying the AI proposal quota.
+pub fn local_proposal_limit(source_duration_ms: u64) -> usize {
+    (source_duration_ms.div_ceil(30_000) as usize).clamp(6, 30)
+}
+
 pub struct SelectionOutcome {
     pub candidates: Vec<Candidate>,
     pub selector: String,
@@ -39,7 +45,11 @@ pub async fn propose(
 
     match provider {
         PROVIDER_OFFLINE => Ok(SelectionOutcome {
-            candidates: heuristic::propose(transcript, source.duration_ms, proposals),
+            candidates: heuristic::propose(
+                transcript,
+                source.duration_ms,
+                local_proposal_limit(source.duration_ms),
+            ),
             selector: "local ranking".into(),
         }),
         PROVIDER_OPENAI | PROVIDER_ANTHROPIC => {
@@ -326,6 +336,13 @@ mod tests {
         let (t, p) = plan_counts(25 * 60_000);
         assert_eq!(t, 3);
         assert_eq!(p, 5);
+    }
+
+    #[test]
+    fn local_ranking_keeps_many_more_candidates() {
+        assert_eq!(local_proposal_limit(3 * 60_000), 6);
+        assert_eq!(local_proposal_limit(366_805), 13);
+        assert_eq!(local_proposal_limit(60 * 60_000), 30);
     }
 
     #[test]
