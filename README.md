@@ -1,12 +1,48 @@
+<div align="center">
+
 # Clipping Factory
 
-A local clipping studio, written entirely in Rust. One long podcast MP4 goes in; a few **faithful, polished 1080×1920 vertical clips** come out — each one a single continuous excerpt of the original conversation, with word-accurate karaoke captions and a restrained house style.
+### One podcast in. Every strong, faithful clip out.
 
-No accounts. No uploads to anyone's server. No AI slop: the machine never rewrites, reorders, or invents speech — it only chooses `start_time` and `end_time`, and a deterministic validator rejects weak moments rather than padding the results.
+Local-first podcast clipping with transcript ranking, face-aware reframing, and
+word-accurate captions. Built entirely in Rust.
+
+![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
+![Local first](https://img.shields.io/badge/processing-local--first-1f6feb)
+![Output](https://img.shields.io/badge/output-1080%C3%971920-7c3aed)
+![Tests](https://img.shields.io/badge/tests-50%20passing-238636)
+
+</div>
+
+![Clipping Factory results showing six rendered vertical clips](docs/assets/studio-results.png)
+
+Clipping Factory turns a podcast MP4 into as many **strong, distinct 1080×1920
+vertical clips** as the source supports. Every result is one continuous excerpt
+of the original conversation, with word-accurate captions and clean,
+face-tracked framing.
+
+No accounts. No cloud upload. No required AI model. The local ranking engine
+scans the full transcript for strong openings, reactions, repeated claims,
+specific insights, and clean payoffs. A deterministic validator rejects
+context-dependent or overlapping moments before anything renders.
+
+## What you get
+
+| | |
+|---|---|
+| **More useful candidates** | Local ranking keeps every strong, sufficiently distinct moment instead of stopping at three. |
+| **Faithful excerpts** | Speech is never rewritten, reordered, spliced, or invented. |
+| **Feed-ready video** | H.264/AAC, 1080×1920, face-tracked crop or a safe blur-pad fallback. |
+| **Karaoke captions** | Word-timestamped Impact and Clean caption styles with selectable accent colors. |
+| **Private by default** | Video, audio, transcript, project state, and rendering stay on your Mac. |
+
+<p align="center">
+  <img src="docs/assets/clip-details.png" alt="Rendered clip cards with captions and face tracking" width="620">
+</p>
 
 ```
 Drop MP4 → Inspect → Extract audio → Transcribe (whisper.cpp, word timestamps)
-        → Find moments (your OpenAI/Anthropic key, or offline heuristic)
+        → Find moments (local ranking, or optional OpenAI/Anthropic)
         → Deterministic quality validator → Face-aware framing analysis
         → Sequential FFmpeg renders → Preview & download each clip
 ```
@@ -47,15 +83,16 @@ or set `CF_WHISPER_MODEL` to any ggml model path.
 
 ---
 
-## Connecting AI (the editorial selector)
+## Local by default, AI optional
 
-Click **AI connection** in the studio header.
+Local ranking needs no key and is the default. Open **Local ranking** in the
+studio header if you want to connect an optional provider instead.
 
 | Provider | Default model | Notes |
 |---|---|---|
+| Local ranking | — | No key needed. Scans the full transcript for reactions, repeated claims, strong hooks, and clean payoffs. |
 | OpenAI | `gpt-4o-mini` | The PRD's primary provider. Any chat-completions model name works. |
 | Anthropic | `claude-sonnet-4-5` | Alternative provider. |
-| Offline heuristic | — | No key needed. Deterministic hook/payoff analysis — decent, clearly labeled, and the automatic fallback when no key is set. |
 
 Privacy posture (enforced in code):
 
@@ -125,7 +162,7 @@ last completed stage (finished clips are never re-rendered).
 | Web server & API | axum 0.8 + tokio (SSE progress events, streaming multipart upload, Range-aware clip serving) |
 | Media probe/extract/render | FFmpeg & FFprobe subprocesses, `-progress` parsing, kill-on-cancel |
 | Transcription | whisper.cpp (`--max-len 1 --split-on-word`) → word timestamps + rebuilt sentence segments |
-| Editorial selection | OpenAI / Anthropic (user's key) with transcript windowing (12 min windows, 2 min overlap), or offline heuristic |
+| Editorial selection | Local full-transcript ranking, or OpenAI / Anthropic with 12-minute overlapping transcript windows |
 | Quality gate | Pure-Rust deterministic validator (`src/validate.rs`) |
 | Framing | rustface (SeetaFace) over 1 fps sampled frames → layout decision + smoothed crop keyframes |
 | Captions | Generated ASS subtitles burned by libass (`Inter`, bundled in `assets/fonts/`) |
@@ -152,7 +189,7 @@ Everything's overridable via environment variables: `CF_PORT`, `CF_DATA_DIR`, `C
 ### Tests
 
 ```bash
-cargo test   # 36 tests: every validator rule, caption pagination, crop math,
+cargo test   # 50 tests: every validator rule, caption pagination, crop math,
              # layout decisions, selector parsing, state recovery
 ```
 
@@ -168,7 +205,7 @@ implementation is **all Rust** by design — one static binary, no Node/Python r
 | Node + Express | axum (Rust) | Single binary, lower memory on 4-hour sources, and the codebase drops straight into a Tauri desktop app for the post-MVP $5 product |
 | Python `faster-whisper` | whisper.cpp | Best-in-class on Apple Silicon (Metal), no Python dependency, same models |
 | Remotion renderer | FFmpeg filtergraphs + libass | 10–50× faster for a fixed restrained style (Remotion renders via headless Chrome), and sidesteps the Remotion commercial-license review the PRD itself flags (§21). If post-MVP you want animated caption packs, a Remotion sidecar can be added behind the same render interface. |
-| OpenAI only | OpenAI + Anthropic + offline heuristic | Provider choice, plus a keyless mode for trying the pipeline |
+| OpenAI only | Local ranking + OpenAI + Anthropic | Strong keyless selection by default, with provider choice when wanted |
 
 Product behavior follows the PRD: same stages, same API shape, same rubric and
 thresholds, same outputs, same privacy rules.
