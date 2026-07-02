@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clipping Factory MVP Wireframe</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #f5f5f3;
+      color: #222;
+      font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input { font: inherit; }
+    button {
+      border: 1px solid #777;
+      border-radius: 4px;
+      background: #fff;
+      padding: 9px 13px;
+    }
+    .primary { background: #222; color: #fff; border-color: #222; }
+    .shell { max-width: 1180px; margin: 0 auto; padding: 24px; }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #bbb;
+      padding-bottom: 16px;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { font-size: 19px; margin-bottom: 0; }
+    .muted { color: #666; }
+    .upload {
+      margin: 36px 0;
+      border: 2px dashed #999;
+      border-radius: 8px;
+      padding: 56px 24px;
+      text-align: center;
+      background: #fafafa;
+    }
+    .upload strong { display: block; font-size: 18px; margin-bottom: 8px; }
+    .progress {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin: 24px 0 36px;
+    }
+    .step { border-top: 3px solid #aaa; padding-top: 8px; }
+    .step.done { border-color: #222; }
+    .results-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      margin-bottom: 16px;
+    }
+    .clip {
+      display: grid;
+      grid-template-columns: 180px minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+      border: 1px solid #aaa;
+      border-radius: 6px;
+      background: #fff;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .preview {
+      aspect-ratio: 9 / 16;
+      max-height: 235px;
+      margin: auto;
+      width: 132px;
+      border: 1px solid #666;
+      background: #ddd;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 10px;
+    }
+    .rank {
+      font-size: 12px;
+      color: #666;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    .why {
+      border-left: 3px solid #999;
+      padding-left: 10px;
+      color: #555;
+    }
+    .actions { display: flex; flex-direction: column; gap: 8px; }
+    @media (max-width: 720px) {
+      .clip { grid-template-columns: 120px 1fr; }
+      .actions { grid-column: 1 / -1; flex-direction: row; }
+      .progress { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <!-- One-screen studio: source in, ranked finished clips out. -->
+    <header>
+      <h1>Clipping Factory</h1>
+      <button>AI connection</button>
+    </header>
+
+    <!-- Empty/import state. Only one source file is accepted per project. -->
+    <section class="upload">
+      <strong>Drop one podcast MP4 here</strong>
+      <p class="muted">The original stays on this computer. Clips keep the original conversation intact.</p>
+      <button class="primary">Choose MP4</button>
+    </section>
+
+    <!-- Processing is explicit so long local jobs never look frozen. -->
+    <section class="progress" aria-label="Processing progress">
+      <div class="step done"><strong>1. Inspect</strong><br><span class="muted">Video ready</span></div>
+      <div class="step done"><strong>2. Transcribe</strong><br><span class="muted">42:18 processed</span></div>
+      <div class="step done"><strong>3. Find moments</strong><br><span class="muted">6 passed quality checks</span></div>
+      <div class="step"><strong>4. Render</strong><br><span class="muted">3 of 6 ready</span></div>
+    </section>
+
+    <!-- Results are different source moments, not stylistic variants of one moment. -->
+    <section>
+      <div class="results-head">
+        <div>
+          <h2>6 strong clips found</h2>
+          <p class="muted">Ranked by self-contained opening, tension, payoff, and clarity.</p>
+        </div>
+        <button>Open output folder</button>
+      </div>
+
+      <article class="clip">
+        <div class="preview">▶<br>9:16 preview<br><small>Captions shown here</small></div>
+        <div>
+          <div class="rank">Best candidate · 01:08</div>
+          <h3>“Most people misunderstand what discipline is”</h3>
+          <p>Starts at 18:42 and ends at 19:50. One continuous excerpt from the podcast.</p>
+          <p class="why">Why it works: the first sentence establishes a conflict, the explanation stands alone, and the final sentence resolves the idea.</p>
+        </div>
+        <div class="actions">
+          <button class="primary">View clip</button>
+          <button>Download MP4</button>
+        </div>
+      </article>
+
+      <article class="clip">
+        <div class="preview">▶<br>9:16 preview<br><small>Captions shown here</small></div>
+        <div>
+          <div class="rank">Candidate 2 · 00:47</div>
+          <h3>“The mistake that nearly ended the experiment”</h3>
+          <p>Starts at 31:06 and ends at 31:53. One continuous excerpt from the podcast.</p>
+          <p class="why">Why it works: a specific mistake creates curiosity, and the speaker gives a complete consequence before the excerpt ends.</p>
+        </div>
+        <div class="actions">
+          <button class="primary">View clip</button>
+          <button>Download MP4</button>
+        </div>
+      </article>
+    </section>
+  </div>
+</body>
+</html>

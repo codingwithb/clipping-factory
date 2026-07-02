@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clipping Factory</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div>
+        <h1>Clipping Factory</h1>
+        <p class="muted tagline">One podcast in. A few faithful clips out.</p>
+      </div>
+      <button id="ai-btn" type="button">
+        <span id="ai-dot" class="dot"></span>
+        <span id="ai-label">AI connection</span>
+      </button>
+    </header>
+
+    <div id="setup-banner" class="banner hidden"></div>
+    <div id="warning-banner" class="banner warn hidden"></div>
+
+    <!-- Empty / import state -->
+    <section id="upload-state">
+      <div id="drop" class="upload">
+        <strong>Drop one podcast MP4 here</strong>
+        <p class="muted">The original stays on this computer. Clips keep the original conversation intact — one continuous excerpt each, no invented speech.</p>
+        <button id="choose-btn" class="primary" type="button">Choose MP4</button>
+        <input id="file-input" type="file" accept="video/mp4,.mp4,.m4v" hidden>
+        <div class="style-pick">
+          <span class="muted small">Caption style</span>
+          <div class="seg" role="radiogroup">
+            <button type="button" class="seg-btn active" data-style="impact">Impact — big &amp; kinetic</button>
+            <button type="button" class="seg-btn" data-style="clean">Clean — minimal</button>
+          </div>
+        </div>
+        <div class="style-pick">
+          <span class="muted small">Highlight color</span>
+          <div class="swatches" role="radiogroup">
+            <button type="button" class="swatch active" data-color="#FFDD00" style="background:#FFDD00" title="Yellow"></button>
+            <button type="button" class="swatch" data-color="#7CFF4F" style="background:#7CFF4F" title="Green"></button>
+            <button type="button" class="swatch" data-color="#FF4F4F" style="background:#FF4F4F" title="Red"></button>
+            <button type="button" class="swatch" data-color="#4FB5FF" style="background:#4FB5FF" title="Blue"></button>
+            <button type="button" class="swatch" data-color="#C77DFF" style="background:#C77DFF" title="Purple"></button>
+            <button type="button" class="swatch" data-color="#FF9F1C" style="background:#FF9F1C" title="Orange"></button>
+            <input type="color" id="custom-color" value="#FFDD00" title="Custom color">
+          </div>
+        </div>
+        <p class="muted small">Supported input: MP4 with at least one audio stream, 20 seconds to 4 hours.</p>
+      </div>
+      <div id="upload-progress" class="hidden">
+        <p id="upload-label">Uploading…</p>
+        <div class="bar"><div id="upload-bar" class="bar-fill"></div></div>
+      </div>
+    </section>
+
+    <!-- Processing state -->
+    <section id="processing-state" class="hidden">
+      <div class="source-line">
+        <div>
+          <span id="source-name" class="source-name"></span>
+          <span id="source-meta" class="muted"></span>
+        </div>
+        <button id="cancel-btn" type="button">Cancel</button>
+      </div>
+      <div id="stages" class="progress"></div>
+      <div id="current-op" class="current-op hidden">
+        <span class="spinner"></span>
+        <span id="current-op-text"></span>
+        <span id="elapsed" class="muted"></span>
+      </div>
+      <div id="error-box" class="error hidden">
+        <div>
+          <strong id="error-stage"></strong>
+          <p id="error-text"></p>
+        </div>
+        <button id="retry-btn" class="primary" type="button">Retry stage</button>
+      </div>
+    </section>
+
+    <!-- Results state -->
+    <section id="results-state" class="hidden">
+      <div class="results-head">
+        <div>
+          <h2 id="results-title"></h2>
+          <p class="muted" id="results-sub">Ranked by self-contained opening, tension, payoff, and clarity.</p>
+        </div>
+        <div class="results-actions">
+          <button id="open-folder-btn" type="button">Open output folder</button>
+          <button id="new-project-btn" type="button">New project</button>
+        </div>
+      </div>
+      <div id="clips"></div>
+      <div id="empty-results" class="empty-results hidden">
+        <strong>No excerpt passed the quality bar.</strong>
+        <p class="muted">This source didn't contain a moment that stands alone at the required quality. Clipping Factory returns fewer clips rather than bad ones. Try a longer or more speech-led recording.</p>
+      </div>
+      <details id="rejected-details" class="rejected hidden">
+        <summary>What was considered and rejected</summary>
+        <div id="rejected-list"></div>
+      </details>
+    </section>
+
+    <footer class="muted small">
+      Processing happens locally. Only transcript text is sent to your AI provider — never the video.
+    </footer>
+  </div>
+
+  <!-- AI connection modal -->
+  <div id="modal-backdrop" class="modal-backdrop hidden">
+    <div class="modal">
+      <h3>AI connection</h3>
+      <p class="muted small">The editorial selector proposes which moments stand alone. Your key is stored locally with user-only permissions, never logged, and never shown again.</p>
+      <label>Provider
+        <select id="provider">
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="offline">Offline heuristic (no key)</option>
+        </select>
+      </label>
+      <label id="model-row">Model
+        <input id="model" type="text" placeholder="gpt-4o-mini">
+      </label>
+      <label id="key-row">API key
+        <input id="api-key" type="password" placeholder="sk-…" autocomplete="off">
+      </label>
+      <p id="offline-note" class="muted small hidden">Offline mode uses a deterministic heuristic — decent openings and clean endings, but connect a provider for editorial-grade selection.</p>
+      <p id="test-result" class="small hidden"></p>
+      <div class="modal-actions">
+        <button id="modal-close" type="button">Close</button>
+        <button id="test-save" class="primary" type="button">Test &amp; save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

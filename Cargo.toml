@@ -1,0 +1,33 @@
+[package]
+name = "clipping-factory"
+version = "0.1.0"
+edition = "2021"
+description = "A local clipping studio: one podcast MP4 in, several faithful vertical clips out."
+license = "MIT"
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+futures = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+rustface = "0.1"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+
+[profile.dev]
+opt-level = 1
