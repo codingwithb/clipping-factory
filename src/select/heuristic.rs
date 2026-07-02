@@ -37,10 +37,6 @@ const PRONOUN_OPENERS: &[&str] = &["that", "this", "it", "he", "she", "they", "w
 
 const FILLER_WORDS: &[&str] = &["um", "uh", "like", "you know", "kind of", "sort of"];
 
-const ABSOLUTE_CUES: &[&str] = &[
-    "everyone", "everybody", "nobody", "no one", "never", "always", "all of us",
-];
-
 const MIN_MS: u64 = 20_000;
 const MAX_MS: u64 = 90_000;
 
@@ -177,7 +173,15 @@ pub fn propose(t: &Transcript, source_duration_ms: u64, proposal_count: usize) -
         let headline = make_headline(best_headline_sentence(window));
         let opening_quote = quote_head(&opener.text, 12);
         let closing_quote = quote_tail(&closer.text, 12);
-        let selection_reason = make_reason(hook, question_open, contrast, payoff_cue, has_number);
+        let selection_reason = make_reason(
+            hook,
+            question_open,
+            contrast,
+            payoff_cue,
+            has_number,
+            repeated_claim,
+            exchange,
+        );
 
         scored.push((
             composite,
@@ -263,10 +267,15 @@ fn has_reaction_exchange(sentences: &[Sentence]) -> bool {
 }
 
 fn contains_absolute_claim(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    let single_word_cue = lower.split_whitespace().any(|word| {
+        matches!(
+            word.trim_matches(|c: char| !c.is_alphanumeric() && c != '\''),
+            "everyone" | "everybody" | "nobody" | "never" | "always"
+        )
+    });
     let normalized = format!(" {} ", normalized_claim(text));
-    ABSOLUTE_CUES
-        .iter()
-        .any(|cue| normalized.contains(&format!(" {} ", cue)))
+    single_word_cue || normalized.contains(" no one ") || normalized.contains(" all of us ")
 }
 
 fn repeats_elsewhere(sentence: &Sentence, sentences: &[Sentence]) -> bool {
@@ -326,7 +335,15 @@ fn quote_tail(text: &str, words: usize) -> String {
     all[start..].join(" ")
 }
 
-fn make_reason(hook: bool, question: bool, contrast: bool, payoff: bool, number: bool) -> String {
+fn make_reason(
+    hook: bool,
+    question: bool,
+    contrast: bool,
+    payoff: bool,
+    number: bool,
+    repeated_claim: bool,
+    exchange: bool,
+) -> String {
     let mut parts: Vec<&str> = Vec::new();
     if question {
         parts.push("opens on a direct question");
@@ -340,6 +357,12 @@ fn make_reason(hook: bool, question: bool, contrast: bool, payoff: bool, number:
     }
     if number {
         parts.push("grounds the point in specifics");
+    }
+    if exchange {
+        parts.push("contains a quick question-and-answer turn");
+    }
+    if repeated_claim {
+        parts.push("repeats its central claim for emphasis");
     }
     if payoff {
         parts.push("lands on a stated takeaway before it ends");
