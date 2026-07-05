@@ -34,15 +34,22 @@ pub async fn probe(cfg: &Config, src: &Path, original_filename: &str) -> Result<
         .iter()
         .find(|s| s["codec_type"] == "video")
         .ok_or_else(|| anyhow!("No video stream found. Attach an MP4 that contains video."))?;
-    let audio = streams.iter().find(|s| s["codec_type"] == "audio").ok_or_else(|| {
-        anyhow!("This MP4 has no audio stream. Clipping Factory needs speech audio to work with.")
-    })?;
+    let audio = streams
+        .iter()
+        .find(|s| s["codec_type"] == "audio")
+        .ok_or_else(|| {
+            anyhow!(
+                "This MP4 has no audio stream. Clipping Factory needs speech audio to work with."
+            )
+        })?;
 
     let duration_s: f64 = v["format"]["duration"]
         .as_str()
         .and_then(|d| d.parse().ok())
         .or_else(|| video["duration"].as_str().and_then(|d| d.parse().ok()))
-        .ok_or_else(|| anyhow!("Could not determine the video duration. The file may be corrupted."))?;
+        .ok_or_else(|| {
+            anyhow!("Could not determine the video duration. The file may be corrupted.")
+        })?;
     let duration_ms = (duration_s * 1000.0) as u64;
 
     if duration_ms < MIN_SOURCE_MS {
@@ -76,8 +83,14 @@ pub async fn probe(cfg: &Config, src: &Path, original_filename: &str) -> Result<
         width,
         height,
         fps,
-        video_codec: video["codec_name"].as_str().unwrap_or("unknown").to_string(),
-        audio_codec: audio["codec_name"].as_str().unwrap_or("unknown").to_string(),
+        video_codec: video["codec_name"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string(),
+        audio_codec: audio["codec_name"]
+            .as_str()
+            .unwrap_or("unknown")
+            .to_string(),
         size_bytes,
     })
 }
@@ -127,7 +140,9 @@ where
     run_streaming(&cfg.ffmpeg, &args, cancel, |is_err, line| {
         // ffmpeg -progress emits `out_time_ms=<microseconds>` lines on stdout.
         if !is_err {
-            if let Some(us) = line.strip_prefix("out_time_ms=").and_then(|v| v.parse::<f64>().ok())
+            if let Some(us) = line
+                .strip_prefix("out_time_ms=")
+                .and_then(|v| v.parse::<f64>().ok())
             {
                 if dur_us > 0.0 {
                     on_progress((us / dur_us).clamp(0.0, 1.0) as f32);

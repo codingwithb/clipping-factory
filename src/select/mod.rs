@@ -5,7 +5,7 @@
 //! - `openai`    — the PRD's primary provider (user's key)
 //! - `anthropic` — optional alternative provider
 //! - `offline`   — deterministic heuristic; also the automatic fallback when
-//!                 no key is configured, clearly labeled in the UI.
+//!   no key is configured, clearly labeled in the UI.
 
 pub mod anthropic;
 pub mod heuristic;
@@ -41,7 +41,11 @@ pub async fn propose(
 ) -> Result<SelectionOutcome> {
     let (target, proposals) = plan_counts(source.duration_ms);
 
-    let provider = if settings.connected() { settings.provider.as_str() } else { PROVIDER_OFFLINE };
+    let provider = if settings.connected() {
+        settings.provider.as_str()
+    } else {
+        PROVIDER_OFFLINE
+    };
 
     match provider {
         PROVIDER_OFFLINE => Ok(SelectionOutcome {
@@ -90,16 +94,28 @@ pub async fn test_connection(settings: &AiSettings) -> Result<String> {
     match settings.provider.as_str() {
         PROVIDER_OFFLINE => Ok("Local ranking is ready — no API key needed.".into()),
         PROVIDER_OPENAI => {
-            let key = settings.api_key.as_deref().filter(|k| !k.trim().is_empty())
+            let key = settings
+                .api_key
+                .as_deref()
+                .filter(|k| !k.trim().is_empty())
                 .ok_or_else(|| anyhow!("Enter an OpenAI API key first."))?;
             openai::test(key).await?;
-            Ok(format!("OpenAI connection verified. Using model {}.", settings.effective_model()))
+            Ok(format!(
+                "OpenAI connection verified. Using model {}.",
+                settings.effective_model()
+            ))
         }
         PROVIDER_ANTHROPIC => {
-            let key = settings.api_key.as_deref().filter(|k| !k.trim().is_empty())
+            let key = settings
+                .api_key
+                .as_deref()
+                .filter(|k| !k.trim().is_empty())
                 .ok_or_else(|| anyhow!("Enter an Anthropic API key first."))?;
             anthropic::test(key).await?;
-            Ok(format!("Anthropic connection verified. Using model {}.", settings.effective_model()))
+            Ok(format!(
+                "Anthropic connection verified. Using model {}.",
+                settings.effective_model()
+            ))
         }
         other => Err(anyhow!("Unknown provider `{}`.", other)),
     }
@@ -136,7 +152,11 @@ pub fn build_windows(t: &Transcript, source_duration_ms: u64) -> Vec<Window> {
             ));
         }
         if !lines.is_empty() {
-            windows.push(Window { start_ms: win_start, end_ms: win_end, lines });
+            windows.push(Window {
+                start_ms: win_start,
+                end_ms: win_end,
+                lines,
+            });
         }
         if win_end >= source_duration_ms {
             break;
@@ -144,7 +164,11 @@ pub fn build_windows(t: &Transcript, source_duration_ms: u64) -> Vec<Window> {
         win_start = win_end - OVERLAP_MS;
     }
     if windows.is_empty() {
-        windows.push(Window { start_ms: 0, end_ms: source_duration_ms, lines: String::new() });
+        windows.push(Window {
+            start_ms: 0,
+            end_ms: source_duration_ms,
+            lines: String::new(),
+        });
     }
     windows
 }
@@ -263,7 +287,9 @@ pub fn parse_candidates(raw: &str) -> Result<Vec<Candidate>> {
 
     let mut out = Vec::new();
     for c in wrapper.candidates {
-        let (Some(start_ms), Some(end_ms)) = (c.start_ms, c.end_ms) else { continue };
+        let (Some(start_ms), Some(end_ms)) = (c.start_ms, c.end_ms) else {
+            continue;
+        };
         if start_ms < 0 || end_ms <= start_ms {
             continue;
         }

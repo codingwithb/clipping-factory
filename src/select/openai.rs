@@ -56,11 +56,34 @@ pub async fn test(key: &str) -> Result<()> {
 pub fn map_error(status: u16, body: &str, provider: &str) -> anyhow::Error {
     let snippet: String = body.chars().take(240).collect();
     match status {
-        401 | 403 => anyhow!("{} rejected the API key ({}). Open AI connection and check the key.", provider, status),
-        429 => anyhow!("{} rate limit reached (429). Wait a moment, then retry the stage.", provider),
-        400 => anyhow!("{} rejected the request (400). The model name may be wrong. Details: {}", provider, snippet),
-        404 => anyhow!("{} says the model was not found (404). Check the model name in AI connection.", provider),
-        s if s >= 500 => anyhow!("{} had a server error ({}). Retry the stage shortly.", provider, s),
-        s => anyhow!("{} returned an unexpected error ({}): {}", provider, s, snippet),
+        401 | 403 => anyhow!(
+            "{} rejected the API key ({}). Open AI connection and check the key.",
+            provider,
+            status
+        ),
+        429 => anyhow!(
+            "{} rate limit reached (429). Wait a moment, then retry the stage.",
+            provider
+        ),
+        400 => anyhow!(
+            "{} rejected the request (400). The model name may be wrong. Details: {}",
+            provider,
+            snippet
+        ),
+        404 => anyhow!(
+            "{} says the model was not found (404). Check the model name in AI connection.",
+            provider
+        ),
+        s if s >= 500 => anyhow!(
+            "{} had a server error ({}). Retry the stage shortly.",
+            provider,
+            s
+        ),
+        s => anyhow!(
+            "{} returned an unexpected error ({}): {}",
+            provider,
+            s,
+            snippet
+        ),
     }
 }
