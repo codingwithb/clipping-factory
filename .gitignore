@@ -3,3 +3,7 @@
 /.qa-data/
 /.qa-output/
 /target/
+
+# Eval harness inputs/outputs (local media, never committed)
+/evals/sources/
+/evals/results/
