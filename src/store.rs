@@ -25,7 +25,9 @@ pub struct Store {
 
 impl Store {
     pub fn new(data_dir: &Path) -> Store {
-        Store { root: data_dir.join("projects") }
+        Store {
+            root: data_dir.join("projects"),
+        }
     }
 
     pub fn project_dir(&self, id: &str) -> PathBuf {
@@ -55,6 +57,14 @@ impl Store {
     pub fn clips_dir(&self, id: &str) -> PathBuf {
         self.project_dir(id).join("clips")
     }
+    /// Uncaptioned framed intermediates, kept so captions can be restyled
+    /// without re-doing the expensive framing render.
+    pub fn base_dir(&self, id: &str) -> PathBuf {
+        self.clips_dir(id).join("base")
+    }
+    pub fn base_clip_path(&self, id: &str, clip_id: &str) -> PathBuf {
+        self.base_dir(id).join(format!("{clip_id}.mp4"))
+    }
     pub fn frames_dir(&self, id: &str) -> PathBuf {
         self.project_dir(id).join("frames")
     }
@@ -64,7 +74,7 @@ impl Store {
     }
 
     pub async fn create_dirs(&self, id: &str) -> Result<()> {
-        tokio::fs::create_dir_all(self.clips_dir(id)).await?;
+        tokio::fs::create_dir_all(self.base_dir(id)).await?;
         Ok(())
     }
 
@@ -160,6 +170,8 @@ mod tests {
                 status: ClipStatus::Ready,
                 error: None,
                 low_confidence: false,
+                caption_style: Some("impact".into()),
+                accent_color: Some("#FFDD00".into()),
             }],
             output_dir: Some("/tmp/out".into()),
         };

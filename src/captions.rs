@@ -22,12 +22,38 @@ impl CaptionStyle {
             _ => CaptionStyle::Impact,
         }
     }
+    /// Strict parse for API input: unknown names are an error, not a default.
+    pub fn parse_strict(s: &str) -> Option<CaptionStyle> {
+        match s.trim().to_lowercase().as_str() {
+            "impact" => Some(CaptionStyle::Impact),
+            "clean" => Some(CaptionStyle::Clean),
+            _ => None,
+        }
+    }
     pub fn label(&self) -> &'static str {
         match self {
             CaptionStyle::Impact => "impact",
             CaptionStyle::Clean => "clean",
         }
     }
+}
+
+/// Default accent as `#RRGGBB`, mirroring the ASS BGR constants below
+/// (consistency is asserted by a unit test).
+pub fn default_accent_hex(style: CaptionStyle) -> &'static str {
+    match style {
+        CaptionStyle::Impact => "#FFDD00",
+        CaptionStyle::Clean => "#FFB224",
+    }
+}
+
+/// The words fully inside a clip interval, for caption generation.
+pub fn words_in_interval(words: &[Word], start_ms: u64, end_ms: u64) -> Vec<Word> {
+    words
+        .iter()
+        .filter(|w| w.start_ms >= start_ms && w.end_ms <= end_ms)
+        .cloned()
+        .collect()
 }
 
 /// Accent (currently spoken word). ASS colors are &HBBGGRR.
@@ -108,18 +134,21 @@ const BLOCK_BOTTOM_MAX: f32 = 1640.0;
 const LINE_PITCH: f32 = 1.04;
 
 const STOPWORDS: &[&str] = &[
-    "the", "a", "an", "and", "or", "but", "so", "of", "to", "in", "on", "at", "is", "are",
-    "was", "were", "be", "been", "it", "its", "it's", "that", "that's", "this", "these",
-    "if", "you", "your", "you're", "we", "we're", "i", "i'm", "he", "she", "they", "them",
-    "their", "there", "there's", "like", "just", "really", "very", "what", "what's", "when",
-    "how", "why", "would", "could", "can", "can't", "will", "won't", "because", "about",
-    "for", "with", "as", "do", "did", "does", "don't", "have", "has", "had", "not", "no",
-    "yes", "my", "me", "us", "our", "than", "then", "get", "got", "go", "going", "gonna",
-    "all", "any", "some", "one", "out", "up", "down", "now", "well",
-]; 
+    "the", "a", "an", "and", "or", "but", "so", "of", "to", "in", "on", "at", "is", "are", "was",
+    "were", "be", "been", "it", "its", "it's", "that", "that's", "this", "these", "if", "you",
+    "your", "you're", "we", "we're", "i", "i'm", "he", "she", "they", "them", "their", "there",
+    "there's", "like", "just", "really", "very", "what", "what's", "when", "how", "why", "would",
+    "could", "can", "can't", "will", "won't", "because", "about", "for", "with", "as", "do", "did",
+    "does", "don't", "have", "has", "had", "not", "no", "yes", "my", "me", "us", "our", "than",
+    "then", "get", "got", "go", "going", "gonna", "all", "any", "some", "one", "out", "up", "down",
+    "now", "well",
+];
 
 fn is_stopword(w: &str) -> bool {
-    let clean: String = w.chars().filter(|c| c.is_alphanumeric() || *c == '\'').collect();
+    let clean: String = w
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '\'')
+        .collect();
     STOPWORDS.contains(&clean.to_lowercase().as_str())
 }
 
@@ -183,7 +212,13 @@ pub fn layout_lockup(words: &[Word], page_no: usize) -> Vec<LockupLine> {
     };
 
     if let Some((idxs, fs)) = small_line((0..e).collect()) {
-        lines.push(LockupLine { word_idx: idxs, emphasis: false, fs, x: 0.0, y: 0.0 });
+        lines.push(LockupLine {
+            word_idx: idxs,
+            emphasis: false,
+            fs,
+            x: 0.0,
+            y: 0.0,
+        });
     }
     {
         let chars = words[e].text.len();
@@ -191,10 +226,22 @@ pub fn layout_lockup(words: &[Word], page_no: usize) -> Vec<LockupLine> {
         if chars as f32 * CHAR_EM_UPPER * fs > MAX_LINE_W {
             fs = (MAX_LINE_W / (chars as f32 * CHAR_EM_UPPER)).max(EMPH_FS_FLOOR);
         }
-        lines.push(LockupLine { word_idx: vec![e], emphasis: true, fs, x: 0.0, y: 0.0 });
+        lines.push(LockupLine {
+            word_idx: vec![e],
+            emphasis: true,
+            fs,
+            x: 0.0,
+            y: 0.0,
+        });
     }
     if let Some((idxs, fs)) = small_line(((e + 1)..words.len()).collect()) {
-        lines.push(LockupLine { word_idx: idxs, emphasis: false, fs, x: 0.0, y: 0.0 });
+        lines.push(LockupLine {
+            word_idx: idxs,
+            emphasis: false,
+            fs,
+            x: 0.0,
+            y: 0.0,
+        });
     }
 
     // Vertical stack centered on the anchor, clamped to the safe band.
@@ -215,11 +262,19 @@ pub fn layout_lockup(words: &[Word], page_no: usize) -> Vec<LockupLine> {
             540.0
         } else {
             // Mild raggedness that always stays on-canvas.
-            let chars: usize = line.word_idx.iter().map(|&i| words[i].text.len()).sum::<usize>()
+            let chars: usize = line
+                .word_idx
+                .iter()
+                .map(|&i| words[i].text.len())
+                .sum::<usize>()
                 + line.word_idx.len().saturating_sub(1);
             let w = chars as f32 * CHAR_EM_LOWER * line.fs;
             let max_dx = ((1080.0 - w) / 2.0 - 50.0).max(0.0);
-            let dx: f32 = if (li + page_no) % 2 == 0 { -34.0 } else { 34.0 };
+            let dx: f32 = if (li + page_no).is_multiple_of(2) {
+                -34.0
+            } else {
+                34.0
+            };
             540.0 + dx.clamp(-max_dx, max_dx)
         };
     }
@@ -243,13 +298,19 @@ fn build_impact(input: &CaptionInput) -> String {
             .map(|w| w.start_ms)
             .unwrap_or(u64::MAX);
         let last = page.last().unwrap();
-        let page_end = (last.end_ms + 200).min(next_start).min(clip_len.max(last.end_ms));
+        let page_end = (last.end_ms + 200)
+            .min(next_start)
+            .min(clip_len.max(last.end_ms));
 
         let lines = layout_lockup(page, page_no);
 
         for (k, word) in page.iter().enumerate() {
             let start = word.start_ms;
-            let end = if k + 1 < page.len() { page[k + 1].start_ms } else { page_end };
+            let end = if k + 1 < page.len() {
+                page[k + 1].start_ms
+            } else {
+                page_end
+            };
             if end <= start {
                 continue;
             }
@@ -269,8 +330,11 @@ fn build_impact(input: &CaptionInput) -> String {
                         text.push(' ');
                     }
                     let raw = escape(&page[wi].text);
-                    let shown =
-                        if line.emphasis { raw.to_uppercase() } else { raw.to_lowercase() };
+                    let shown = if line.emphasis {
+                        raw.to_uppercase()
+                    } else {
+                        raw.to_lowercase()
+                    };
                     if wi == k {
                         text.push_str(&format!(
                             "{{\\c&H{}&}}{}{{\\c&H{}&}}",
@@ -293,7 +357,11 @@ fn build_impact(input: &CaptionInput) -> String {
 }
 
 fn impact_header(font: &str) -> String {
-    let face = if font == "Inter" { "Inter ExtraBold".to_string() } else { font.to_string() };
+    let face = if font == "Inter" {
+        "Inter ExtraBold".to_string()
+    } else {
+        font.to_string()
+    };
     format!(
         "[Script Info]\n\
          Title: Clipping Factory captions (impact)\n\
@@ -500,11 +568,8 @@ fn show_headline(headline: &str, words: &[Word]) -> bool {
     if h.is_empty() {
         return false;
     }
-    let opening: std::collections::HashSet<String> = words
-        .iter()
-        .take(14)
-        .flat_map(|w| norm(&w.text))
-        .collect();
+    let opening: std::collections::HashSet<String> =
+        words.iter().take(14).flat_map(|w| norm(&w.text)).collect();
     let contained = h.iter().filter(|w| opening.contains(*w)).count();
     (contained as f32 / h.len() as f32) < 0.7
 }
@@ -532,7 +597,12 @@ mod tests {
     use super::*;
 
     fn w(text: &str, start: u64) -> Word {
-        Word { text: text.into(), start_ms: start, end_ms: start + 280, p: 0.9 }
+        Word {
+            text: text.into(),
+            start_ms: start,
+            end_ms: start + 280,
+            p: 0.9,
+        }
     }
 
     // ---- Clean style ----
@@ -574,8 +644,14 @@ mod tests {
             .enumerate()
             .map(|(i, t)| w(t, i as u64 * 300))
             .collect();
-        assert!(!show_headline("Most people misunderstand what discipline is", &words));
-        assert!(show_headline("A totally different framing of the idea", &words));
+        assert!(!show_headline(
+            "Most people misunderstand what discipline is",
+            &words
+        ));
+        assert!(show_headline(
+            "A totally different framing of the idea",
+            &words
+        ));
     }
 
     #[test]
@@ -652,8 +728,14 @@ mod tests {
     fn accent_defaults_per_style_and_user_wins() {
         assert_eq!(accent_bgr_for(CaptionStyle::Impact, None), "00DDFF");
         assert_eq!(accent_bgr_for(CaptionStyle::Clean, None), "24B2FF");
-        assert_eq!(accent_bgr_for(CaptionStyle::Impact, Some("#7CFF4F")), "4FFF7C");
-        assert_eq!(accent_bgr_for(CaptionStyle::Impact, Some("garbage")), "00DDFF");
+        assert_eq!(
+            accent_bgr_for(CaptionStyle::Impact, Some("#7CFF4F")),
+            "4FFF7C"
+        );
+        assert_eq!(
+            accent_bgr_for(CaptionStyle::Impact, Some("garbage")),
+            "00DDFF"
+        );
     }
 
     #[test]
@@ -672,10 +754,18 @@ mod tests {
         let mut covered: Vec<usize> = lines.iter().flat_map(|l| l.word_idx.clone()).collect();
         covered.sort();
         assert_eq!(covered, vec![0, 1, 2, 3, 4]);
-        let emph = lines.iter().find(|l| l.emphasis).expect("has emphasis line");
+        let emph = lines
+            .iter()
+            .find(|l| l.emphasis)
+            .expect("has emphasis line");
         for l in &lines {
             if !l.emphasis {
-                assert!(emph.fs > l.fs * 1.5, "emphasis dominates: {} vs {}", emph.fs, l.fs);
+                assert!(
+                    emph.fs > l.fs * 1.5,
+                    "emphasis dominates: {} vs {}",
+                    emph.fs,
+                    l.fs
+                );
             }
             assert!(l.y > BLOCK_TOP_MIN - 1.0 && l.y < BLOCK_BOTTOM_MAX + 1.0);
         }
@@ -693,7 +783,11 @@ mod tests {
         let emph = lines.iter().find(|l| l.emphasis).unwrap();
         let w = "counterintuitive".len() as f32 * CHAR_EM_UPPER * emph.fs;
         assert!(w <= MAX_LINE_W + 1.0, "emphasis width {} exceeds frame", w);
-        assert!(emph.fs >= EMPH_FS_FLOOR - 26.0, "still reads big: {}", emph.fs);
+        assert!(
+            emph.fs >= EMPH_FS_FLOOR - 26.0,
+            "still reads big: {}",
+            emph.fs
+        );
     }
 
     #[test]
@@ -705,8 +799,7 @@ mod tests {
         for p in &pages {
             assert!(p.len() <= 5, "impact page too long: {}", p.len());
             if p.len() > 1 {
-                let chars: usize =
-                    p.iter().map(|w| w.text.len()).sum::<usize>() + p.len() - 1;
+                let chars: usize = p.iter().map(|w| w.text.len()).sum::<usize>() + p.len() - 1;
                 assert!(chars <= PAGE_CHAR_BUDGET, "page over budget: {}", chars);
             }
         }
@@ -717,16 +810,17 @@ mod tests {
     /// same lockup legitimately share an identical window.)
     #[test]
     fn impact_windows_never_partially_overlap_in_fast_speech() {
-        let words: Vec<Word> = "this is very fast speech with no pauses at all between any words here honestly"
-            .split_whitespace()
-            .enumerate()
-            .map(|(i, t)| Word {
-                text: t.into(),
-                start_ms: i as u64 * 180,
-                end_ms: (i as u64 + 1) * 180,
-                p: 0.9,
-            })
-            .collect();
+        let words: Vec<Word> =
+            "this is very fast speech with no pauses at all between any words here honestly"
+                .split_whitespace()
+                .enumerate()
+                .map(|(i, t)| Word {
+                    text: t.into(),
+                    start_ms: i as u64 * 180,
+                    end_ms: (i as u64 + 1) * 180,
+                    p: 0.9,
+                })
+                .collect();
         let ass = build_ass(&input(&words, 20_000), CaptionStyle::Impact);
         let mut windows = parse_events(&ass);
         windows.sort();
@@ -767,5 +861,51 @@ mod tests {
         assert_eq!(CaptionStyle::from_str("clean"), CaptionStyle::Clean);
         assert_eq!(CaptionStyle::from_str("impact"), CaptionStyle::Impact);
         assert_eq!(CaptionStyle::from_str("anything"), CaptionStyle::Impact);
+    }
+}
+
+#[cfg(test)]
+mod restyle_support_tests {
+    use super::*;
+
+    #[test]
+    fn default_hex_matches_ass_bgr_constants() {
+        assert_eq!(
+            hex_to_ass_bgr(default_accent_hex(CaptionStyle::Impact)).as_deref(),
+            Some(ACCENT_BGR)
+        );
+        assert_eq!(
+            hex_to_ass_bgr(default_accent_hex(CaptionStyle::Clean)).as_deref(),
+            Some(CLEAN_ACCENT_BGR)
+        );
+    }
+
+    #[test]
+    fn parse_strict_rejects_unknown_styles() {
+        assert_eq!(
+            CaptionStyle::parse_strict("impact"),
+            Some(CaptionStyle::Impact)
+        );
+        assert_eq!(
+            CaptionStyle::parse_strict(" Clean "),
+            Some(CaptionStyle::Clean)
+        );
+        assert_eq!(CaptionStyle::parse_strict("comic-sans"), None);
+        assert_eq!(CaptionStyle::parse_strict(""), None);
+    }
+
+    #[test]
+    fn words_in_interval_keeps_only_fully_contained_words() {
+        let w = |s: u64, e: u64| Word {
+            text: "w".into(),
+            start_ms: s,
+            end_ms: e,
+            p: 1.0,
+        };
+        let words = vec![w(900, 1100), w(1000, 1500), w(1500, 2000), w(1900, 2100)];
+        let inside = words_in_interval(&words, 1000, 2000);
+        assert_eq!(inside.len(), 2);
+        assert_eq!(inside[0].start_ms, 1000);
+        assert_eq!(inside[1].end_ms, 2000);
     }
 }

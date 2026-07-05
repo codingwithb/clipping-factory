@@ -20,8 +20,11 @@
   let refetchTimer = null;
   let elapsedTimer = null;
   let liveProgress = null; // {stage, progress, detail}
+  // Last style/color the user applied — the starting point for new restyles.
   let captionStyle = localStorage.getItem("cf-caption-style") || "impact";
   let accentColor = localStorage.getItem("cf-accent-color") || "#FFDD00";
+  const ACCENT_PRESETS = ["#FFDD00", "#7CFF4F", "#FF4F4F", "#4FB5FF", "#C77DFF", "#FF9F1C"];
+  const clipRev = {}; // clip id → cache-busting token after a restyle
 
   // ------------------------------------------------------------------ setup
   async function loadSetup() {
@@ -61,42 +64,6 @@
   // ------------------------------------------------------------------ upload
   function wireUpload() {
     const drop = $("drop");
-    document.querySelectorAll(".seg-btn").forEach((b) => {
-      if (b.dataset.style === captionStyle) {
-        document.querySelectorAll(".seg-btn").forEach((x) => x.classList.remove("active"));
-        b.classList.add("active");
-      }
-      b.addEventListener("click", () => {
-        captionStyle = b.dataset.style;
-        localStorage.setItem("cf-caption-style", captionStyle);
-        document.querySelectorAll(".seg-btn").forEach((x) => x.classList.remove("active"));
-        b.classList.add("active");
-      });
-    });
-    const syncSwatches = () => {
-      document.querySelectorAll(".swatch").forEach((s) =>
-        s.classList.toggle("active", s.dataset.color.toUpperCase() === accentColor.toUpperCase())
-      );
-      const custom = $("custom-color");
-      const isPreset = [...document.querySelectorAll(".swatch")].some(
-        (s) => s.dataset.color.toUpperCase() === accentColor.toUpperCase()
-      );
-      custom.classList.toggle("active", !isPreset);
-      custom.value = accentColor;
-    };
-    document.querySelectorAll(".swatch").forEach((s) =>
-      s.addEventListener("click", () => {
-        accentColor = s.dataset.color;
-        localStorage.setItem("cf-accent-color", accentColor);
-        syncSwatches();
-      })
-    );
-    $("custom-color").addEventListener("input", (e) => {
-      accentColor = e.target.value;
-      localStorage.setItem("cf-accent-color", accentColor);
-      syncSwatches();
-    });
-    syncSwatches();
     $("choose-btn").addEventListener("click", () => $("file-input").click());
     $("file-input").addEventListener("change", (e) => {
       if (e.target.files[0]) uploadFile(e.target.files[0]);
@@ -123,8 +90,6 @@
     $("upload-label").textContent = `Uploading ${file.name}…`;
 
     const form = new FormData();
-    form.append("caption_style", captionStyle);
-    form.append("accent_color", accentColor);
     form.append("file", file, file.name);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/projects");
@@ -268,7 +233,7 @@
   }
 
   function renderCurrentOp(p) {
-    const active = ["inspecting","extracting_audio","transcribing","selecting_candidates","validating_candidates","analyzing_layout","rendering"].includes(p.status);
+    const active = STAGE_ORDER.includes(p.status);
     $("current-op").classList.toggle("hidden", !active);
     $("cancel-btn").classList.toggle("hidden", !active);
     if (active) {
@@ -351,7 +316,8 @@
       v.controls = true;
       v.preload = "metadata";
       v.playsInline = true;
-      v.src = `/api/projects/${projectId}/clips/${c.id}`;
+      v.src = `/api/projects/${projectId}/clips/${c.id}` +
+        (clipRev[c.id] ? `?rev=${clipRev[c.id]}` : "");
       preview.appendChild(v);
     } else if (c.status === "rendering") {
       preview.innerHTML = `<span class="spinner"></span>`;
@@ -381,6 +347,7 @@
     body.querySelector(".why").textContent = c.status === "failed" && c.error
       ? `Render error: ${c.error}`
       : `Why it works: ${c.selection_reason}`;
+    if (c.status === "ready") body.appendChild(restyleControls(c));
 
     const actions = document.createElement("div");
     actions.className = "actions";
@@ -400,6 +367,98 @@
     row.appendChild(body);
     row.appendChild(actions);
     return row;
+  }
+
+  // Per-clip caption restyle: pick style + accent color, re-burn from the
+  // cached base render (seconds, not a full re-render), reload the preview.
+  function restyleControls(c) {
+    const box = document.createElement("div");
+    box.className = "restyle";
+    let selStyle = c.caption_style || captionStyle;
+    let selColor = (c.accent_color || accentColor).toUpperCase();
+
+    const label = document.createElement("span");
+    label.className = "muted small restyle-label";
+    label.textContent = "Captions";
+
+    const seg = document.createElement("div");
+    seg.className = "seg";
+    const styleBtns = ["impact", "clean"].map((s) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "seg-btn";
+      b.textContent = s === "impact" ? "Impact" : "Clean";
+      b.addEventListener("click", () => { selStyle = s; sync(); });
+      seg.appendChild(b);
+      return [s, b];
+    });
+
+    const swatches = document.createElement("div");
+    swatches.className = "swatches";
+    const swatchBtns = ACCENT_PRESETS.map((color) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "swatch";
+      b.style.background = color;
+      b.title = color;
+      b.addEventListener("click", () => { selColor = color; sync(); });
+      swatches.appendChild(b);
+      return [color, b];
+    });
+    const custom = document.createElement("input");
+    custom.type = "color";
+    custom.className = "custom-color";
+    custom.title = "Custom color";
+    custom.addEventListener("input", (e) => { selColor = e.target.value.toUpperCase(); sync(); });
+    swatches.appendChild(custom);
+
+    const apply = document.createElement("button");
+    apply.type = "button";
+    apply.textContent = "Apply";
+    const status = document.createElement("span");
+    status.className = "muted small restyle-status";
+
+    function sync() {
+      for (const [s, b] of styleBtns) b.classList.toggle("active", s === selStyle);
+      for (const [color, b] of swatchBtns) b.classList.toggle("active", color === selColor);
+      custom.classList.toggle("active", !ACCENT_PRESETS.includes(selColor));
+      custom.value = selColor;
+    }
+
+    apply.addEventListener("click", async () => {
+      apply.disabled = true;
+      apply.textContent = "Restyling…";
+      status.textContent = "Re-burning captions…";
+      try {
+        const res = await fetch(`/api/projects/${projectId}/clips/${c.id}/restyle`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ style: selStyle, accent_color: selColor }),
+        });
+        if (!res.ok) throw new Error((await res.json()).error || "Restyle failed.");
+        const updated = await res.json();
+        captionStyle = selStyle;
+        accentColor = selColor;
+        localStorage.setItem("cf-caption-style", captionStyle);
+        localStorage.setItem("cf-accent-color", accentColor);
+        clipRev[c.id] = Date.now();
+        const i = (view.clips || []).findIndex((x) => x.id === c.id);
+        if (i >= 0) view.clips[i] = updated;
+        render();
+      } catch (err) {
+        status.textContent = err.message;
+        apply.disabled = false;
+        apply.textContent = "Apply";
+      }
+    });
+
+    box.appendChild(label);
+    box.appendChild(seg);
+    box.appendChild(swatches);
+    box.appendChild(apply);
+    box.appendChild(status);
+    sync();
+    return box;
   }
 
   // ------------------------------------------------------------------ elapsed

@@ -85,7 +85,11 @@ pub async fn retry(state: AppState, id: String) -> Result<(), String> {
     }
     p.error = None;
     p.status = JobState::Created;
-    state.store.save_project(&p).await.map_err(|e| e.to_string())?;
+    state
+        .store
+        .save_project(&p)
+        .await
+        .map_err(|e| e.to_string())?;
 
     if let Ok(mut manifest) = state.store.load_manifest(&id).await {
         let mut changed = false;
@@ -107,7 +111,6 @@ pub async fn retry(state: AppState, id: String) -> Result<(), String> {
 
 struct Ctx {
     state: AppState,
-    id: String,
     handle: Arc<ProjectHandle>,
     cancel: CancellationToken,
 }
@@ -169,7 +172,8 @@ impl Ctx {
         self.state.store.save_project(p).await.ok();
         self.handle.clear_live();
         self.emit_stage(p, stage, "failed");
-        self.handle.emit(json!({"type": "done", "status": "failed"}));
+        self.handle
+            .emit(json!({"type": "done", "status": "failed"}));
     }
 
     async fn mark_cancelled(&self, p: &mut Project, stage: &str) {
@@ -178,7 +182,8 @@ impl Ctx {
         rec.detail = Some("Cancelled".into());
         self.state.store.save_project(p).await.ok();
         self.handle.clear_live();
-        self.handle.emit(json!({"type": "done", "status": "cancelled"}));
+        self.handle
+            .emit(json!({"type": "done", "status": "cancelled"}));
     }
 
     /// Throttled live-progress reporter for a stage.
@@ -212,7 +217,11 @@ async fn run(
     handle: Arc<ProjectHandle>,
     cancel: CancellationToken,
 ) -> Result<()> {
-    let ctx = Ctx { state: state.clone(), id: id.clone(), handle, cancel: cancel.clone() };
+    let ctx = Ctx {
+        state: state.clone(),
+        handle,
+        cancel: cancel.clone(),
+    };
     let store = &state.store;
     let cfg = &state.cfg;
     let mut p = store.load_project(&id).await?;
@@ -277,17 +286,24 @@ async fn run(
 
     // ---- 2. Extract audio -------------------------------------------------
     if transcript_exists {
-        ctx.skip(&mut p, "extracting_audio", "Transcript already on disk").await?;
+        ctx.skip(&mut p, "extracting_audio", "Transcript already on disk")
+            .await?;
     } else {
         let wav = store.audio_path(&id);
         if wav.is_file() {
-            ctx.skip(&mut p, "extracting_audio", "Audio already extracted").await?;
+            ctx.skip(&mut p, "extracting_audio", "Audio already extracted")
+                .await?;
         } else {
             let mut prog = ctx.progress_fn("extracting_audio");
             stage!("extracting_audio", {
-                crate::media::extract_audio(cfg, &src, &wav, source.duration_ms, &ctx.cancel, |pct| {
-                    prog(pct, None)
-                })
+                crate::media::extract_audio(
+                    cfg,
+                    &src,
+                    &wav,
+                    source.duration_ms,
+                    &ctx.cancel,
+                    |pct| prog(pct, None),
+                )
                 .await
                 .map(|_| "16 kHz mono audio ready".to_string())
             });
@@ -296,7 +312,8 @@ async fn run(
 
     // ---- 3. Transcribe ----------------------------------------------------
     if transcript_exists {
-        ctx.skip(&mut p, "transcribing", "Transcript already on disk").await?;
+        ctx.skip(&mut p, "transcribing", "Transcript already on disk")
+            .await?;
     } else {
         let wav = store.audio_path(&id);
         let mut prog = ctx.progress_fn("transcribing");
@@ -327,7 +344,8 @@ async fn run(
 
     // ---- 4. Select candidates ---------------------------------------------
     if store.raw_candidates_path(&id).is_file() {
-        ctx.skip(&mut p, "selecting_candidates", "Proposals already on disk").await?;
+        ctx.skip(&mut p, "selecting_candidates", "Proposals already on disk")
+            .await?;
     } else {
         let settings = state.settings.read().unwrap().clone();
         stage!("selecting_candidates", {
@@ -363,12 +381,18 @@ async fn run(
 
     // No passing moments is a valid, honest outcome (PRD §6.2, §8.3).
     if report.accepted.is_empty() {
-        ctx.skip(&mut p, "analyzing_layout", "No moments passed the quality bar").await?;
+        ctx.skip(
+            &mut p,
+            "analyzing_layout",
+            "No moments passed the quality bar",
+        )
+        .await?;
         ctx.skip(&mut p, "rendering", "Nothing to render").await?;
         store.save_manifest(&id, &RenderManifest::default()).await?;
         p.status = JobState::Complete;
         store.save_project(&p).await?;
-        ctx.handle.emit(json!({"type": "done", "status": "complete"}));
+        ctx.handle
+            .emit(json!({"type": "done", "status": "complete"}));
         return Ok(());
     }
 
@@ -379,7 +403,8 @@ async fn run(
         .map(|m| m.clips.len() == report.accepted.len())
         .unwrap_or(false);
     if manifest_matches {
-        ctx.skip(&mut p, "analyzing_layout", "Layouts already planned").await?;
+        ctx.skip(&mut p, "analyzing_layout", "Layouts already planned")
+            .await?;
     } else {
         let mut prog = ctx.progress_fn("analyzing_layout");
         stage!("analyzing_layout", {
@@ -429,14 +454,24 @@ async fn run(
                     error: None,
                     low_confidence: interval_confidence(&transcript, c.start_ms, c.end_ms)
                         < LOW_CONFIDENCE,
+                    caption_style: None,
+                    accent_color: None,
                 });
             }
             match result {
                 Ok(_) => {
-                    let face_crops =
-                        clips.iter().filter(|c| matches!(c.layout, LayoutPlan::FaceCrop { .. })).count();
+                    let face_crops = clips
+                        .iter()
+                        .filter(|c| matches!(c.layout, LayoutPlan::FaceCrop { .. }))
+                        .count();
                     store
-                        .save_manifest(&id, &RenderManifest { clips, output_dir: None })
+                        .save_manifest(
+                            &id,
+                            &RenderManifest {
+                                clips,
+                                output_dir: None,
+                            },
+                        )
                         .await?;
                     Ok(format!(
                         "{} layout(s) planned · {} face-tracked",
@@ -460,16 +495,19 @@ async fn run(
         .await;
         return Ok(());
     }
-    let caption_style = CaptionStyle::from_str(
-        p.caption_style.as_deref().unwrap_or(&cfg.caption_style),
-    );
-    let accent_bgr = accent_bgr_for(caption_style, p.accent_color.as_deref());
+    let caption_style =
+        CaptionStyle::from_str(p.caption_style.as_deref().unwrap_or(&cfg.caption_style));
+    let accent_hex = p
+        .accent_color
+        .clone()
+        .unwrap_or_else(|| crate::captions::default_accent_hex(caption_style).to_string());
+    let accent_bgr = accent_bgr_for(caption_style, Some(&accent_hex));
     let output_dir = state
         .cfg
         .output_root
         .join(slugify(source.filename.trim_end_matches(".mp4"), 60));
     let total = manifest.clips.len();
-    let mut rendered_before = 0usize;
+    tokio::fs::create_dir_all(store.base_dir(&id)).await?;
 
     for i in 0..manifest.clips.len() {
         if ctx.cancel.is_cancelled() {
@@ -479,56 +517,74 @@ async fn run(
         let clip = manifest.clips[i].clone();
         let out_path = store.clips_dir(&id).join(&clip.filename);
         if clip.status == ClipStatus::Ready && out_path.is_file() {
-            rendered_before += 1;
             continue;
         }
 
         manifest.clips[i].status = ClipStatus::Rendering;
         store.save_manifest(&id, &manifest).await?;
-        ctx.handle.emit(json!({"type": "clip", "clip": manifest.clips[i]}));
+        ctx.handle
+            .emit(json!({"type": "clip", "clip": manifest.clips[i]}));
         let mut prog = ctx.progress_fn("rendering");
 
-        // Build captions for this interval.
-        let words: Vec<Word> = transcript
-            .words
-            .iter()
-            .filter(|w| w.start_ms >= clip.start_ms && w.end_ms <= clip.end_ms)
-            .cloned()
-            .collect();
-        let ass = build_ass(
-            &CaptionInput {
-                words: &words,
-                clip_start_ms: clip.start_ms,
-                clip_end_ms: clip.end_ms,
-                headline: &clip.headline,
-                font: &cfg.caption_font,
-                accent_bgr: accent_bgr.clone(),
-            },
-            caption_style,
-        );
-        let ass_path: PathBuf = store.clips_dir(&id).join(format!("{}.ass", clip.id));
-        tokio::fs::write(&ass_path, &ass).await?;
-
         let done_label = format!("Rendering clip {} of {}", i + 1, total);
-        let render_result = crate::render::render_clip(
-            cfg,
-            &src,
-            &source,
-            &clip.layout,
-            clip.start_ms,
-            clip.end_ms,
-            &ass_path,
-            &out_path,
-            &ctx.cancel,
-            |pct| prog(pct, Some(done_label.clone())),
-        )
+        let caption_label = format!("Burning captions for clip {} of {}", i + 1, total);
+        let base_path = store.base_clip_path(&id, &clip.id);
+        let ass_path: PathBuf = store.clips_dir(&id).join(format!("{}.ass", clip.id));
+
+        let render_result: anyhow::Result<()> = async {
+            // Pass 1 — framed, uncaptioned base. Kept on disk so captions can
+            // be restyled later without re-doing the expensive framing work
+            // (and reused as-is when retrying a failed caption burn).
+            if !base_path.is_file() {
+                crate::render::render_base_clip(
+                    cfg,
+                    &src,
+                    &source,
+                    &clip.layout,
+                    clip.start_ms,
+                    clip.end_ms,
+                    &base_path,
+                    &ctx.cancel,
+                    |pct| prog(pct * 0.85, Some(done_label.clone())),
+                )
+                .await?;
+            }
+            // Pass 2 — word-accurate captions burned onto the base.
+            let words =
+                crate::captions::words_in_interval(&transcript.words, clip.start_ms, clip.end_ms);
+            let ass = build_ass(
+                &CaptionInput {
+                    words: &words,
+                    clip_start_ms: clip.start_ms,
+                    clip_end_ms: clip.end_ms,
+                    headline: &clip.headline,
+                    font: &cfg.caption_font,
+                    accent_bgr: accent_bgr.clone(),
+                },
+                caption_style,
+            );
+            tokio::fs::write(&ass_path, &ass).await?;
+            let burn = crate::render::burn_captions(
+                cfg,
+                &base_path,
+                &ass_path,
+                &out_path,
+                clip.end_ms.saturating_sub(clip.start_ms),
+                &ctx.cancel,
+                |pct| prog(0.85 + pct * 0.15, Some(caption_label.clone())),
+            )
+            .await;
+            tokio::fs::remove_file(&ass_path).await.ok();
+            burn
+        }
         .await;
-        tokio::fs::remove_file(&ass_path).await.ok();
 
         match render_result {
             Ok(()) => {
                 manifest.clips[i].status = ClipStatus::Ready;
                 manifest.clips[i].error = None;
+                manifest.clips[i].caption_style = Some(caption_style.label().to_string());
+                manifest.clips[i].accent_color = Some(accent_hex.clone());
                 // Copy into the user-facing output folder (best-effort).
                 if tokio::fs::create_dir_all(&output_dir).await.is_ok() {
                     let dest = output_dir.join(&clip.filename);
@@ -537,7 +593,8 @@ async fn run(
                     }
                 }
                 store.save_manifest(&id, &manifest).await?;
-                ctx.handle.emit(json!({"type": "clip", "clip": manifest.clips[i]}));
+                ctx.handle
+                    .emit(json!({"type": "clip", "clip": manifest.clips[i]}));
             }
             Err(e) if is_cancelled(&e, &ctx.cancel) => {
                 manifest.clips[i].status = ClipStatus::Pending;
@@ -547,16 +604,28 @@ async fn run(
             }
             Err(e) => {
                 // A failed render must not discard successful outputs (PRD §12).
+                // Drop this clip's base so retry rebuilds it from scratch — a
+                // truncated base from a crash would poison every re-burn.
+                tokio::fs::remove_file(&base_path).await.ok();
                 manifest.clips[i].status = ClipStatus::Failed;
                 manifest.clips[i].error = Some(e.to_string());
                 store.save_manifest(&id, &manifest).await?;
-                ctx.handle.emit(json!({"type": "clip", "clip": manifest.clips[i]}));
+                ctx.handle
+                    .emit(json!({"type": "clip", "clip": manifest.clips[i]}));
             }
         }
     }
 
-    let ready = manifest.clips.iter().filter(|c| c.status == ClipStatus::Ready).count();
-    let failed = manifest.clips.iter().filter(|c| c.status == ClipStatus::Failed).count();
+    let ready = manifest
+        .clips
+        .iter()
+        .filter(|c| c.status == ClipStatus::Ready)
+        .count();
+    let failed = manifest
+        .clips
+        .iter()
+        .filter(|c| c.status == ClipStatus::Failed)
+        .count();
 
     if ready > 0 {
         ctx.complete(
@@ -574,9 +643,9 @@ async fn run(
         p.status = JobState::Complete;
         p.error = None;
         store.save_project(&p).await?;
-        ctx.handle.emit(json!({"type": "done", "status": "complete"}));
+        ctx.handle
+            .emit(json!({"type": "done", "status": "complete"}));
     } else {
-        let _ = rendered_before;
         ctx.fail(
             &mut p,
             "rendering",

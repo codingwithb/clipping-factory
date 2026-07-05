@@ -68,23 +68,22 @@ header {
 .upload.dragover { border-color: var(--ink); background: #f1f1ec; }
 .upload strong { display: block; font-size: 18px; margin-bottom: 8px; }
 .upload .small { margin-top: 18px; margin-bottom: 0; }
-.style-pick { margin-top: 20px; display: flex; align-items: center; justify-content: center; gap: 10px; }
 .seg { display: inline-flex; border: 1px solid #8a8a84; border-radius: 6px; overflow: hidden; }
-.seg-btn { border: none; border-radius: 0; background: #fff; padding: 7px 13px; font-size: 12.5px; }
+.seg-btn { border: none; border-radius: 0; background: #fff; padding: 5px 11px; font-size: 12px; }
 .seg-btn + .seg-btn { border-left: 1px solid #8a8a84; }
 .seg-btn.active { background: var(--ink); color: #fff; }
-.swatches { display: inline-flex; align-items: center; gap: 7px; }
+.swatches { display: inline-flex; align-items: center; gap: 6px; }
 .swatch {
-  width: 24px; height: 24px; border-radius: 50%; padding: 0;
+  width: 20px; height: 20px; border-radius: 50%; padding: 0;
   border: 2px solid transparent; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15);
   cursor: pointer;
 }
 .swatch.active { border-color: var(--ink); }
-#custom-color {
-  width: 26px; height: 26px; padding: 0; border: 1px dashed #8a8a84;
+.custom-color {
+  width: 22px; height: 22px; padding: 0; border: 1px dashed #8a8a84;
   border-radius: 50%; background: none; cursor: pointer;
 }
-#custom-color.active { border: 2px solid var(--ink); }
+.custom-color.active { border: 2px solid var(--ink); }
 #upload-progress { margin: 36px 0; }
 .bar { height: 6px; background: #e3e3dd; border-radius: 3px; overflow: hidden; }
 .bar-fill { height: 100%; width: 0%; background: var(--ink); transition: width .2s; }
@@ -165,6 +164,16 @@ header {
 .actions { display: flex; flex-direction: column; gap: 8px; }
 .actions a { text-decoration: none; }
 .actions button { width: 100%; }
+
+/* Per-clip caption restyling (style + accent color, applied post-render). */
+.restyle {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--hairline);
+}
+.restyle-label { letter-spacing: .07em; text-transform: uppercase; font-size: 11px; }
+.restyle button { padding: 5px 12px; font-size: 12.5px; }
+.restyle .seg-btn { padding: 5px 11px; }
+.restyle-status:empty { display: none; }
 
 .empty-results {
   border: 1px dashed #9a9a93; border-radius: 6px; padding: 34px 24px;
