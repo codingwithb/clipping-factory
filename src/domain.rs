@@ -276,6 +276,13 @@ pub struct ClipRecord {
     pub error: Option<String>,
     /// True when transcription confidence inside this interval was low (PRD §10).
     pub low_confidence: bool,
+    /// Caption style burned into the current render: "impact" or "clean".
+    /// `None` on manifests written before post-render restyling existed.
+    #[serde(default)]
+    pub caption_style: Option<String>,
+    /// Accent color burned into the current render, as `#RRGGBB`.
+    #[serde(default)]
+    pub accent_color: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -293,5 +300,33 @@ pub fn fmt_ms(ms: u64) -> String {
         format!("{}:{:02}:{:02}", h, m, s)
     } else {
         format!("{:02}:{:02}", m, s)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Manifests written before per-clip caption styling must still load.
+    #[test]
+    fn old_manifest_without_caption_fields_deserializes() {
+        let old = r#"{
+            "clips": [{
+                "id": "c1", "rank": 1, "headline": "A test",
+                "filename": "01-a-test.mp4",
+                "start_ms": 1000, "end_ms": 31000, "duration_ms": 30000,
+                "selection_reason": "why",
+                "scores": {"self_contained":5,"opening_strength":4,"specificity":4,
+                            "tension_or_novelty":4,"payoff":4,"clarity":5,
+                            "context_dependency":1,"slop_risk":1},
+                "layout": {"mode": "blur_pad"},
+                "status": "ready", "error": null, "low_confidence": false
+            }],
+            "output_dir": null
+        }"#;
+        let m: RenderManifest = serde_json::from_str(old).expect("old manifest must load");
+        assert_eq!(m.clips.len(), 1);
+        assert_eq!(m.clips[0].caption_style, None);
+        assert_eq!(m.clips[0].accent_color, None);
     }
 }

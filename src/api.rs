@@ -12,6 +12,7 @@
 //! POST   /api/projects/{id}/retry    re-run failed stage / failed clips only
 //! GET    /api/projects/{id}/clips/{clipId}           inline MP4 (Range-aware)
 //! GET    /api/projects/{id}/clips/{clipId}/download  attachment
+//! POST   /api/projects/{id}/clips/{clipId}/restyle   re-burn captions (style/color)
 //! POST   /api/projects/{id}/open-output-folder
 
 use crate::domain::*;
@@ -45,8 +46,18 @@ pub fn router(state: AppState) -> Router {
         .route("/api/projects/{id}/cancel", post(cancel_project))
         .route("/api/projects/{id}/retry", post(retry_project))
         .route("/api/projects/{id}/clips/{clip}", get(serve_clip_inline))
-        .route("/api/projects/{id}/clips/{clip}/download", get(serve_clip_download))
-        .route("/api/projects/{id}/open-output-folder", post(open_output_folder))
+        .route(
+            "/api/projects/{id}/clips/{clip}/download",
+            get(serve_clip_download),
+        )
+        .route(
+            "/api/projects/{id}/clips/{clip}/restyle",
+            post(restyle_clip),
+        )
+        .route(
+            "/api/projects/{id}/open-output-folder",
+            post(open_output_folder),
+        )
         .layer(DefaultBodyLimit::disable())
         .with_state(state)
 }
@@ -82,7 +93,8 @@ macro_rules! static_asset {
     ($fn_name:ident, $file:literal, $ct:literal) => {
         async fn $fn_name() -> Response {
             let disk = std::path::Path::new("static").join($file);
-            let body = std::fs::read_to_string(&disk)
+            let body = tokio::fs::read_to_string(&disk)
+                .await
                 .unwrap_or_else(|_| include_str!(concat!("../static/", $file)).to_string());
             ([(header::CONTENT_TYPE, $ct)], body).into_response()
         }
@@ -94,7 +106,8 @@ static_asset!(app_js, "app.js", "application/javascript; charset=utf-8");
 async fn index_html() -> Html<String> {
     let disk = std::path::Path::new("static").join("index.html");
     Html(
-        std::fs::read_to_string(&disk)
+        tokio::fs::read_to_string(&disk)
+            .await
             .unwrap_or_else(|_| include_str!("../static/index.html").to_string()),
     )
 }
@@ -105,9 +118,13 @@ async fn index_html() -> Html<String> {
 
 async fn setup_status(State(state): State<AppState>) -> Json<serde_json::Value> {
     let cfg = &state.cfg;
-    let ffmpeg_ok = crate::util::run_capture(&cfg.ffmpeg, &["-version".into()]).await.is_ok();
+    let ffmpeg_ok = crate::util::run_capture(&cfg.ffmpeg, &["-version".into()])
+        .await
+        .is_ok();
     let ffmpeg_ass = crate::util::ffmpeg_has_ass(&cfg.ffmpeg).await;
-    let ffprobe_ok = crate::util::run_capture(&cfg.ffprobe, &["-version".into()]).await.is_ok();
+    let ffprobe_ok = crate::util::run_capture(&cfg.ffprobe, &["-version".into()])
+        .await
+        .is_ok();
     let model_size = cfg
         .whisper_model
         .as_ref()
@@ -149,7 +166,9 @@ async fn set_settings(
     Json(body): Json<SettingsIn>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     if !["openai", "anthropic", "offline"].contains(&body.provider.as_str()) {
-        return Err(bad_request("provider must be openai, anthropic, or offline"));
+        return Err(bad_request(
+            "provider must be openai, anthropic, or offline",
+        ));
     }
     let updated = {
         let mut s = state.settings.write().unwrap();
@@ -159,14 +178,19 @@ async fn set_settings(
         if !body.api_key.trim().is_empty() {
             s.api_key = Some(body.api_key.trim().to_string());
         }
-        if s.provider == "offline" {
-            // Keys are never needed (or sent anywhere) in offline mode.
-        }
         s.clone()
     };
-    crate::settings::save(&state.cfg.data_dir, &updated)
+    // `settings::save` touches the filesystem synchronously (write + chmod
+    // 0600) — keep that work off the async workers.
+    let data_dir = state.cfg.data_dir.clone();
+    let to_save = updated.clone();
+    tokio::task::spawn_blocking(move || crate::settings::save(&data_dir, &to_save))
+        .await
+        .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .map_err(|e| ApiError(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-    Ok(Json(serde_json::to_value(updated.public()).unwrap_or_default()))
+    Ok(Json(
+        serde_json::to_value(updated.public()).unwrap_or_default(),
+    ))
 }
 
 async fn test_settings(State(state): State<AppState>) -> Json<serde_json::Value> {
@@ -212,7 +236,11 @@ async fn create_project(
             if let Ok(v) = field.text().await {
                 let v = v.trim().to_string();
                 if crate::captions::hex_to_ass_bgr(&v).is_some() {
-                    accent_color = Some(if v.starts_with('#') { v } else { format!("#{}", v) });
+                    accent_color = Some(if v.starts_with('#') {
+                        v
+                    } else {
+                        format!("#{}", v)
+                    });
                 }
             }
             continue;
@@ -223,39 +251,55 @@ async fn create_project(
         original_name = field.file_name().unwrap_or("source.mp4").to_string();
         let lower = original_name.to_lowercase();
         if !(lower.ends_with(".mp4") || lower.ends_with(".m4v")) {
-            tokio::fs::remove_dir_all(state.store.project_dir(&id)).await.ok();
-            return Err(bad_request("Attach an .mp4 file. Other containers are post-MVP."));
+            tokio::fs::remove_dir_all(state.store.project_dir(&id))
+                .await
+                .ok();
+            return Err(bad_request(
+                "Attach an .mp4 file. Other containers are post-MVP.",
+            ));
         }
         // Stream to disk without buffering the whole video in memory (PRD §7.2).
-        let mut file = tokio::fs::File::create(&dest).await.map_err(|e| ApiError::from(anyhow::Error::from(e)))?;
+        let mut file = tokio::fs::File::create(&dest)
+            .await
+            .map_err(|e| ApiError::from(anyhow::Error::from(e)))?;
         while let Some(chunk) = field
             .chunk()
             .await
             .map_err(|e| bad_request(format!("upload interrupted: {e}")))?
         {
             wrote_bytes += chunk.len() as u64;
-            file.write_all(&chunk).await.map_err(|e| ApiError::from(anyhow::Error::from(e)))?;
+            file.write_all(&chunk)
+                .await
+                .map_err(|e| ApiError::from(anyhow::Error::from(e)))?;
         }
         file.flush().await.ok();
     }
 
     if wrote_bytes == 0 {
-        tokio::fs::remove_dir_all(state.store.project_dir(&id)).await.ok();
-        return Err(bad_request("No file received. Drop one MP4 into the studio."));
+        tokio::fs::remove_dir_all(state.store.project_dir(&id))
+            .await
+            .ok();
+        return Err(bad_request(
+            "No file received. Drop one MP4 into the studio.",
+        ));
     }
 
     let mut project = Project::new(id.clone(), dest);
     project.caption_style = caption_style;
     project.accent_color = accent_color;
-    // Stash the original filename for the inspect stage & output folder name.
-    project.source = None;
-    state.store.save_project(&project).await.map_err(ApiError::from)?;
-    // Keep the original name in a sidecar spot: we thread it through probe by
-    // writing it into the project after inspection; store it now in `error`-free
-    // metadata via a rename-safe file.
-    tokio::fs::write(state.store.project_dir(&id).join("original-name.txt"), &original_name)
+    state
+        .store
+        .save_project(&project)
         .await
-        .ok();
+        .map_err(ApiError::from)?;
+    // The original filename lives in a sidecar file; the inspect stage and
+    // output-folder naming read it from there.
+    tokio::fs::write(
+        state.store.project_dir(&id).join("original-name.txt"),
+        &original_name,
+    )
+    .await
+    .ok();
 
     // Processing begins automatically (PRD §7.2).
     pipeline::start(state.clone(), id.clone()).ok();
@@ -272,12 +316,30 @@ async fn get_project(
         return Err(not_found("Project not found."));
     }
     // Detect interrupted runs (server restarted mid-processing).
-    let mut p = state.store.load_project(&id).await.map_err(ApiError::from)?;
+    let mut p = state
+        .store
+        .load_project(&id)
+        .await
+        .map_err(ApiError::from)?;
     let handle = state.handle(&id);
     if p.status.is_active() && !handle.is_running() {
         p.status = JobState::Failed;
         p.error = Some("Processing was interrupted (the server restarted). Retry to resume from the last completed stage.".into());
         state.store.save_project(&p).await.ok();
+        // A hard interruption can also strand manifest clips in `rendering`;
+        // reset them so the next run re-renders instead of skipping them.
+        if let Ok(mut m) = state.store.load_manifest(&id).await {
+            let mut changed = false;
+            for c in &mut m.clips {
+                if c.status == ClipStatus::Rendering {
+                    c.status = ClipStatus::Pending;
+                    changed = true;
+                }
+            }
+            if changed {
+                state.store.save_manifest(&id, &m).await.ok();
+            }
+        }
     }
     let view = project_view(&state, &id).await.map_err(ApiError::from)?;
     Ok(Json(view))
@@ -289,9 +351,10 @@ async fn project_view(state: &AppState, id: &str) -> anyhow::Result<serde_json::
     let live = handle.live.lock().unwrap().clone();
     let selection = state.store.load_selection(id).await.ok();
     let manifest = state.store.load_manifest(id).await.ok();
-    let original_name = tokio::fs::read_to_string(state.store.project_dir(id).join("original-name.txt"))
-        .await
-        .unwrap_or_default();
+    let original_name =
+        tokio::fs::read_to_string(state.store.project_dir(id).join("original-name.txt"))
+            .await
+            .unwrap_or_default();
 
     let rejected_summary: Vec<serde_json::Value> = selection
         .as_ref()
@@ -382,10 +445,217 @@ async fn project_events(
         .unwrap_or_else(|_| json!({ "type": "snapshot" }).to_string());
 
     let first = stream::once(async move { Ok(Event::default().data(snapshot)) });
-    let rest = BroadcastStream::new(rx).filter_map(|msg| async move {
-        msg.ok().map(|data| Ok(Event::default().data(data)))
-    });
+    let rest = BroadcastStream::new(rx)
+        .filter_map(|msg| async move { msg.ok().map(|data| Ok(Event::default().data(data))) });
     Ok(Sse::new(first.chain(rest)).keep_alive(KeepAlive::default()))
+}
+
+// ---------------------------------------------------------------------------
+// Post-render caption restyling
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct RestyleIn {
+    /// "impact" | "clean". Omitted = keep the clip's current style.
+    #[serde(default)]
+    style: Option<String>,
+    /// `#RRGGBB`. Omitted = keep the clip's current accent.
+    #[serde(default)]
+    accent_color: Option<String>,
+}
+
+/// Releases the per-clip restyle lock on every exit path.
+struct RestyleGuard {
+    state: AppState,
+    key: String,
+}
+impl Drop for RestyleGuard {
+    fn drop(&mut self) {
+        self.state.end_restyle(&self.key);
+    }
+}
+
+/// Re-burn one rendered clip's captions with a new style and/or accent color.
+/// Fast path: re-encode from the framed, uncaptioned base intermediate.
+/// Older projects without a base rebuild it from the source first (one time).
+async fn restyle_clip(
+    State(state): State<AppState>,
+    AxPath((id, clip_id)): AxPath<(String, String)>,
+    Json(body): Json<RestyleIn>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    use crate::captions::{
+        accent_bgr_for, build_ass, default_accent_hex, hex_to_ass_bgr, words_in_interval,
+        CaptionInput, CaptionStyle,
+    };
+
+    if !state.store.exists(&id) {
+        return Err(not_found("Project not found."));
+    }
+    if state.handle(&id).is_running() {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "Processing is still running. Restyle clips once rendering finishes.".into(),
+        ));
+    }
+    let key = format!("{id}/{clip_id}");
+    if !state.try_begin_restyle(&key) {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "A restyle is already running for this clip.".into(),
+        ));
+    }
+    let _guard = RestyleGuard {
+        state: state.clone(),
+        key,
+    };
+
+    let mut manifest = state
+        .store
+        .load_manifest(&id)
+        .await
+        .map_err(|_| not_found("No rendered clips for this project yet."))?;
+    let idx = manifest
+        .clips
+        .iter()
+        .position(|c| c.id == clip_id)
+        .ok_or_else(|| not_found("Clip not found."))?;
+    let clip = manifest.clips[idx].clone();
+    if clip.status != ClipStatus::Ready {
+        return Err(ApiError(
+            StatusCode::CONFLICT,
+            "Only rendered clips can be restyled.".into(),
+        ));
+    }
+
+    let style = match body.style.as_deref() {
+        Some(s) => CaptionStyle::parse_strict(s)
+            .ok_or_else(|| bad_request("style must be \"impact\" or \"clean\""))?,
+        None => CaptionStyle::from_str(clip.caption_style.as_deref().unwrap_or("impact")),
+    };
+    let accent_hex = match body.accent_color.as_deref() {
+        Some(c) => {
+            hex_to_ass_bgr(c).ok_or_else(|| bad_request("accent_color must be #RRGGBB"))?;
+            let c = c.trim();
+            if c.starts_with('#') {
+                c.to_string()
+            } else {
+                format!("#{c}")
+            }
+        }
+        None => clip
+            .accent_color
+            .clone()
+            .unwrap_or_else(|| default_accent_hex(style).to_string()),
+    };
+
+    let cfg = &state.cfg;
+    let p = state
+        .store
+        .load_project(&id)
+        .await
+        .map_err(ApiError::from)?;
+    let transcript = state.store.load_transcript(&id).await.map_err(|_| {
+        ApiError(
+            StatusCode::CONFLICT,
+            "The transcript is no longer on disk, so captions cannot be rebuilt.".into(),
+        )
+    })?;
+    let cancel = tokio_util::sync::CancellationToken::new();
+
+    // Ensure the framed, uncaptioned base exists (projects rendered before
+    // base intermediates existed rebuild it here from the source, one time).
+    let base_path = state.store.base_clip_path(&id, &clip.id);
+    if !base_path.is_file() {
+        let source = p.source.clone().ok_or_else(|| {
+            ApiError(
+                StatusCode::CONFLICT,
+                "Source metadata is missing; re-run this project.".into(),
+            )
+        })?;
+        if !p.source_path.is_file() {
+            return Err(ApiError(
+                StatusCode::CONFLICT,
+                "The original video is no longer on disk, so this clip cannot be restyled.".into(),
+            ));
+        }
+        tokio::fs::create_dir_all(state.store.base_dir(&id))
+            .await
+            .map_err(|e| ApiError::from(anyhow::Error::from(e)))?;
+        crate::render::render_base_clip(
+            cfg,
+            &p.source_path,
+            &source,
+            &clip.layout,
+            clip.start_ms,
+            clip.end_ms,
+            &base_path,
+            &cancel,
+            |_| {},
+        )
+        .await
+        .map_err(ApiError::from)?;
+    }
+
+    // Build the new captions and burn them onto the base.
+    let words = words_in_interval(&transcript.words, clip.start_ms, clip.end_ms);
+    let ass = build_ass(
+        &CaptionInput {
+            words: &words,
+            clip_start_ms: clip.start_ms,
+            clip_end_ms: clip.end_ms,
+            headline: &clip.headline,
+            font: &cfg.caption_font,
+            accent_bgr: accent_bgr_for(style, Some(&accent_hex)),
+        },
+        style,
+    );
+    let clips_dir = state.store.clips_dir(&id);
+    let ass_path = clips_dir.join(format!("{}.restyle.ass", clip.id));
+    let tmp_out = clips_dir.join(format!("{}.restyle.tmp.mp4", clip.id));
+    tokio::fs::write(&ass_path, &ass)
+        .await
+        .map_err(|e| ApiError::from(anyhow::Error::from(e)))?;
+    let burn = crate::render::burn_captions(
+        cfg,
+        &base_path,
+        &ass_path,
+        &tmp_out,
+        clip.end_ms.saturating_sub(clip.start_ms),
+        &cancel,
+        |_| {},
+    )
+    .await;
+    tokio::fs::remove_file(&ass_path).await.ok();
+    if let Err(e) = burn {
+        tokio::fs::remove_file(&tmp_out).await.ok();
+        return Err(ApiError::from(e));
+    }
+
+    // Swap the restyled clip into place, then refresh the copy in the
+    // user-facing output folder (best-effort, mirroring the render stage).
+    let final_path = clips_dir.join(&clip.filename);
+    tokio::fs::rename(&tmp_out, &final_path)
+        .await
+        .map_err(|e| ApiError::from(anyhow::Error::from(e)))?;
+    if let Some(dir) = manifest.output_dir.clone() {
+        tokio::fs::copy(&final_path, std::path::Path::new(&dir).join(&clip.filename))
+            .await
+            .ok();
+    }
+
+    manifest.clips[idx].caption_style = Some(style.label().to_string());
+    manifest.clips[idx].accent_color = Some(accent_hex);
+    state
+        .store
+        .save_manifest(&id, &manifest)
+        .await
+        .map_err(ApiError::from)?;
+    state
+        .handle(&id)
+        .emit(json!({"type": "clip", "clip": manifest.clips[idx]}));
+    Ok(Json(
+        serde_json::to_value(&manifest.clips[idx]).unwrap_or_default(),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -410,7 +680,9 @@ async fn find_clip(
         .ok_or_else(|| not_found("Clip not found."))?;
     let path = state.store.clips_dir(id).join(&clip.filename);
     if !path.is_file() {
-        return Err(not_found("Clip file is not on disk (render may have failed)."));
+        return Err(not_found(
+            "Clip file is not on disk (render may have failed).",
+        ));
     }
     Ok((clip, path))
 }
@@ -456,7 +728,11 @@ async fn serve_video(
         .and_then(|spec| {
             let (a, b) = spec.split_once('-')?;
             let start: u64 = a.parse().ok()?;
-            let end: u64 = if b.is_empty() { len.saturating_sub(1) } else { b.parse().ok()? };
+            let end: u64 = if b.is_empty() {
+                len.saturating_sub(1)
+            } else {
+                b.parse().ok()?
+            };
             if start > end || end >= len {
                 None
             } else {
@@ -466,6 +742,9 @@ async fn serve_video(
 
     let mut builder = Response::builder()
         .header(header::ACCEPT_RANGES, "bytes")
+        // Clip bytes change in place when captions are restyled — never let
+        // the browser reuse a cached copy.
+        .header(header::CACHE_CONTROL, "no-store")
         .header(header::CONTENT_TYPE, "video/mp4");
     if let Some(name) = &download_name {
         builder = builder.header(
@@ -501,9 +780,9 @@ async fn serve_video(
             format!("bytes {}-{}/{}", start, end, len),
         );
     }
-    Ok(builder
+    builder
         .body(axum::body::Body::from(buf))
-        .map_err(|e| ApiError::from(anyhow::Error::from(e)))?)
+        .map_err(|e| ApiError::from(anyhow::Error::from(e)))
 }
 
 // ---------------------------------------------------------------------------
@@ -516,10 +795,11 @@ async fn open_output_folder(
     let dir = manifest
         .and_then(|m| m.output_dir)
         .unwrap_or_else(|| state.cfg.output_root.to_string_lossy().into_owned());
-    let opener = if cfg!(target_os = "macos") { "open" } else { "xdg-open" };
-    let opened = std::process::Command::new(opener)
-        .arg(&dir)
-        .spawn()
-        .is_ok();
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    let opened = std::process::Command::new(opener).arg(&dir).spawn().is_ok();
     Ok(Json(json!({ "opened": opened, "path": dir })))
 }

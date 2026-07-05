@@ -5,7 +5,7 @@ use crate::config::Config;
 use crate::settings::AiSettings;
 use crate::store::Store;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::broadcast;
@@ -65,6 +65,8 @@ pub struct AppState {
     pub store: Store,
     pub settings: Arc<RwLock<AiSettings>>,
     handles: Arc<Mutex<HashMap<String, Arc<ProjectHandle>>>>,
+    /// `project-id/clip-id` keys with a caption restyle currently running.
+    restyling: Arc<Mutex<HashSet<String>>>,
 }
 
 impl AppState {
@@ -76,11 +78,24 @@ impl AppState {
             store,
             settings: Arc::new(RwLock::new(settings)),
             handles: Arc::new(Mutex::new(HashMap::new())),
+            restyling: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
     pub fn handle(&self, id: &str) -> Arc<ProjectHandle> {
         let mut map = self.handles.lock().unwrap();
-        map.entry(id.to_string()).or_insert_with(ProjectHandle::new).clone()
+        map.entry(id.to_string())
+            .or_insert_with(ProjectHandle::new)
+            .clone()
+    }
+
+    /// Claim the restyle lock for one clip. Returns false when a restyle for
+    /// the same clip is already running.
+    pub fn try_begin_restyle(&self, key: &str) -> bool {
+        self.restyling.lock().unwrap().insert(key.to_string())
+    }
+
+    pub fn end_restyle(&self, key: &str) {
+        self.restyling.lock().unwrap().remove(key);
     }
 }

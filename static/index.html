@@ -29,26 +29,8 @@
         <p class="muted">The original stays on this computer. Clips keep the original conversation intact — one continuous excerpt each, no invented speech.</p>
         <button id="choose-btn" class="primary" type="button">Choose MP4</button>
         <input id="file-input" type="file" accept="video/mp4,.mp4,.m4v" hidden>
-        <div class="style-pick">
-          <span class="muted small">Caption style</span>
-          <div class="seg" role="radiogroup">
-            <button type="button" class="seg-btn active" data-style="impact">Impact — big &amp; kinetic</button>
-            <button type="button" class="seg-btn" data-style="clean">Clean — minimal</button>
-          </div>
-        </div>
-        <div class="style-pick">
-          <span class="muted small">Highlight color</span>
-          <div class="swatches" role="radiogroup">
-            <button type="button" class="swatch active" data-color="#FFDD00" style="background:#FFDD00" title="Yellow"></button>
-            <button type="button" class="swatch" data-color="#7CFF4F" style="background:#7CFF4F" title="Green"></button>
-            <button type="button" class="swatch" data-color="#FF4F4F" style="background:#FF4F4F" title="Red"></button>
-            <button type="button" class="swatch" data-color="#4FB5FF" style="background:#4FB5FF" title="Blue"></button>
-            <button type="button" class="swatch" data-color="#C77DFF" style="background:#C77DFF" title="Purple"></button>
-            <button type="button" class="swatch" data-color="#FF9F1C" style="background:#FF9F1C" title="Orange"></button>
-            <input type="color" id="custom-color" value="#FFDD00" title="Custom color">
-          </div>
-        </div>
-        <p class="muted small">Supported input: MP4 with at least one audio stream, 20 seconds to 4 hours.</p>
+        <p class="muted small">Supported input: MP4 with at least one audio stream, 20 seconds to 4 hours.<br>
+        Caption style and highlight color? Pick them on each finished clip — restyling takes seconds, not a re-render.</p>
       </div>
       <div id="upload-progress" class="hidden">
         <p id="upload-label">Uploading…</p>
