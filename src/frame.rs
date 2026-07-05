@@ -5,6 +5,11 @@
 //! - Two or more faces    → uncropped source over a blurred background.
 //! - No reliable face     → same blurred-background layout.
 //!
+//! The face track is stabilized in three stages before it becomes crop
+//! keyframes: a median-of-three filter rejects single-frame detection
+//! outliers, a centered moving average removes jitter, and a pan-speed clamp
+//! guarantees the crop window never whips across the frame.
+//!
 //! Face detection uses rustface (SeetaFace, pure Rust). If the model file is
 //! missing or detection fails, we degrade gracefully to BlurPad — never crash
 //! a render over framing.
@@ -14,7 +19,7 @@ use crate::domain::{CropKey, LayoutPlan, SourceInfo};
 use crate::util::run_streaming;
 use anyhow::Result;
 use rustface::ImageData;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio_util::sync::CancellationToken;
 
 const SAMPLE_FPS: f64 = 1.0;
@@ -24,6 +29,11 @@ const SAMPLE_WIDTH: u32 = 480;
 const PERSISTENCE: f64 = 0.5;
 /// Cluster width as a fraction of frame width.
 const CLUSTER_EPS: f32 = 0.18;
+/// Maximum pan speed of the crop center, in frame-widths per second.
+/// Keeps the crop calm even if detections jump (PRD: no rapid movement).
+const MAX_PAN_PER_S: f32 = 0.10;
+/// Ignore keyframe-to-keyframe movements smaller than this (dead band).
+const MIN_KEY_DELTA: f32 = 0.012;
 
 pub async fn analyze_layout(
     cfg: &Config,
@@ -65,25 +75,16 @@ pub async fn analyze_layout(
     ];
     run_streaming(&cfg.ffmpeg, &args, cancel, |_, _| {}).await?;
 
-    let mut frame_paths: Vec<std::path::PathBuf> = std::fs::read_dir(frames_dir)?
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().map(|e| e == "jpg").unwrap_or(false))
-        .collect();
-    frame_paths.sort();
-    if frame_paths.is_empty() {
-        return Ok(LayoutPlan::BlurPad);
-    }
-
-    // 2. Detect faces per frame (blocking CPU work off the async runtime).
+    // 2. List frames + detect faces (blocking CPU/fs work off the runtime).
     let model_path = model_path.clone();
-    let paths = frame_paths.clone();
-    let detections: Vec<Vec<f32>> = tokio::task::spawn_blocking(move || {
-        detect_all(&model_path, &paths)
-    })
-    .await??;
+    let dir = frames_dir.to_path_buf();
+    let detections: Vec<Vec<f32>> =
+        tokio::task::spawn_blocking(move || detect_all(&model_path, &dir)).await??;
 
     tokio::fs::remove_dir_all(frames_dir).await.ok();
+    if detections.is_empty() {
+        return Ok(LayoutPlan::BlurPad);
+    }
 
     // 3. Decide the layout.
     let n_frames = detections.len();
@@ -97,7 +98,16 @@ pub async fn analyze_layout(
 }
 
 /// Per frame, return the normalized x-centers (0–1) of detected faces.
-fn detect_all(model_path: &Path, frames: &[std::path::PathBuf]) -> Result<Vec<Vec<f32>>> {
+/// Runs inside `spawn_blocking`: directory listing and detection are
+/// synchronous CPU/fs work that must stay off the async runtime.
+fn detect_all(model_path: &Path, frames_dir: &Path) -> Result<Vec<Vec<f32>>> {
+    let mut frames: Vec<PathBuf> = std::fs::read_dir(frames_dir)?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|e| e == "jpg").unwrap_or(false))
+        .collect();
+    frames.sort();
+
     let mut detector = rustface::create_detector(&model_path.to_string_lossy())
         .map_err(|e| anyhow::anyhow!("face detector init failed: {}", e))?;
     detector.set_min_face_size(24);
@@ -106,7 +116,7 @@ fn detect_all(model_path: &Path, frames: &[std::path::PathBuf]) -> Result<Vec<Ve
     detector.set_slide_window_step(4, 4);
 
     let mut out = Vec::with_capacity(frames.len());
-    for path in frames {
+    for path in &frames {
         let centers = match image::open(path) {
             Ok(img) => {
                 let gray = img.to_luma8();
@@ -150,8 +160,7 @@ pub fn decide_layout(detections: &[Vec<f32>], n_frames: usize) -> LayoutPlan {
     let persistent: Vec<&Vec<(usize, f32)>> = clusters
         .iter()
         .filter(|cl| {
-            let distinct: std::collections::HashSet<usize> =
-                cl.iter().map(|(fi, _)| *fi).collect();
+            let distinct: std::collections::HashSet<usize> = cl.iter().map(|(fi, _)| *fi).collect();
             distinct.len() as f64 / n_frames as f64 >= PERSISTENCE
         })
         .collect();
@@ -159,53 +168,94 @@ pub fn decide_layout(detections: &[Vec<f32>], n_frames: usize) -> LayoutPlan {
     match persistent.len() {
         1 => {
             let cluster = persistent[0];
-            // Per-frame center, forward-filled for frames without a detection.
-            let mut per_frame: Vec<Option<f32>> = vec![None; n_frames];
+            // Per-frame center: true mean when a frame has several in-cluster
+            // detections, then forward-filled for frames without one.
+            let mut sums: Vec<(f32, u32)> = vec![(0.0, 0); n_frames];
             for (fi, cx) in cluster {
-                let slot = &mut per_frame[*fi];
-                *slot = Some(slot.map(|v: f32| (v + cx) / 2.0).unwrap_or(*cx));
+                sums[*fi].0 += cx;
+                sums[*fi].1 += 1;
             }
             let mut filled: Vec<f32> = Vec::with_capacity(n_frames);
-            let first = cluster[0].1;
-            let mut last = first;
-            for slot in per_frame {
-                if let Some(v) = slot {
-                    last = v;
+            let mut last = cluster[0].1;
+            for (sum, count) in sums {
+                if count > 0 {
+                    last = sum / count as f32;
                 }
                 filled.push(last);
             }
-            // Smooth with a centered moving average (PRD: no rapid movement).
-            let smoothed: Vec<f32> = (0..filled.len())
-                .map(|i| {
-                    let lo = i.saturating_sub(2);
-                    let hi = (i + 3).min(filled.len());
-                    filled[lo..hi].iter().sum::<f32>() / (hi - lo) as f32
-                })
-                .collect();
-            // Keyframe every ~2s, dropping near-identical neighbours.
-            let mut keyframes: Vec<CropKey> = Vec::new();
-            for (i, cx) in smoothed.iter().enumerate().step_by(2) {
-                let t_ms = (i as f64 / SAMPLE_FPS * 1000.0) as u64;
-                if keyframes
-                    .last()
-                    .map(|k| (k.cx - cx).abs() > 0.012)
-                    .unwrap_or(true)
-                {
-                    keyframes.push(CropKey { t_ms, cx: *cx });
-                }
+            let smoothed = smooth_track(&filled);
+            LayoutPlan::FaceCrop {
+                keyframes: emit_keyframes(&smoothed, SAMPLE_FPS),
             }
-            if keyframes.is_empty() {
-                keyframes.push(CropKey { t_ms: 0, cx: smoothed[0] });
-            }
-            // Cap keyframe count to keep the ffmpeg expression sane.
-            while keyframes.len() > 12 {
-                keyframes = keyframes.iter().step_by(2).cloned().collect();
-            }
-            LayoutPlan::FaceCrop { keyframes }
         }
         // 0 → no reliable face; ≥2 → don't guess the active speaker (MVP).
         _ => LayoutPlan::BlurPad,
     }
+}
+
+/// Stabilize a raw per-frame center track: a median-of-three filter rejects
+/// single-frame outliers, then a centered moving average removes jitter.
+fn smooth_track(filled: &[f32]) -> Vec<f32> {
+    let median3: Vec<f32> = (0..filled.len())
+        .map(|i| {
+            if i == 0 || i + 1 == filled.len() {
+                return filled[i];
+            }
+            let (mut a, mut b, mut c) = (filled[i - 1], filled[i], filled[i + 1]);
+            if a > b {
+                std::mem::swap(&mut a, &mut b);
+            }
+            if b > c {
+                std::mem::swap(&mut b, &mut c);
+            }
+            if a > b {
+                std::mem::swap(&mut a, &mut b);
+            }
+            b
+        })
+        .collect();
+    (0..median3.len())
+        .map(|i| {
+            let lo = i.saturating_sub(2);
+            let hi = (i + 3).min(median3.len());
+            median3[lo..hi].iter().sum::<f32>() / (hi - lo) as f32
+        })
+        .collect()
+}
+
+/// Keyframe every ~2s with a dead band for near-identical neighbours and a
+/// pan-speed clamp so the crop can never whip across the frame.
+fn emit_keyframes(smoothed: &[f32], sample_fps: f64) -> Vec<CropKey> {
+    let mut keyframes: Vec<CropKey> = Vec::new();
+    for (i, cx) in smoothed.iter().enumerate().step_by(2) {
+        let t_ms = (i as f64 / sample_fps * 1000.0) as u64;
+        let cx = match keyframes.last() {
+            Some(prev) => {
+                let dt_s = (t_ms.saturating_sub(prev.t_ms)) as f32 / 1000.0;
+                let max_d = MAX_PAN_PER_S * dt_s;
+                cx.clamp(prev.cx - max_d, prev.cx + max_d)
+            }
+            None => *cx,
+        };
+        if keyframes
+            .last()
+            .map(|k| (k.cx - cx).abs() > MIN_KEY_DELTA)
+            .unwrap_or(true)
+        {
+            keyframes.push(CropKey { t_ms, cx });
+        }
+    }
+    if keyframes.is_empty() {
+        keyframes.push(CropKey {
+            t_ms: 0,
+            cx: smoothed.first().copied().unwrap_or(0.5),
+        });
+    }
+    // Cap keyframe count to keep the ffmpeg expression sane.
+    while keyframes.len() > 12 {
+        keyframes = keyframes.iter().step_by(2).cloned().collect();
+    }
+    keyframes
 }
 
 #[cfg(test)]
@@ -247,5 +297,54 @@ mod tests {
             .map(|i| if i % 10 < 3 { vec![0.5] } else { vec![] })
             .collect();
         assert_eq!(decide_layout(&det, 30), LayoutPlan::BlurPad);
+    }
+
+    #[test]
+    fn single_frame_outlier_does_not_move_the_crop() {
+        // One bad in-cluster detection (0.65 among steady 0.50) must be
+        // rejected by the median filter, not smeared into the crop path.
+        let det: Vec<Vec<f32>> = (0..30)
+            .map(|i| if i == 15 { vec![0.65] } else { vec![0.5] })
+            .collect();
+        match decide_layout(&det, 30) {
+            LayoutPlan::FaceCrop { keyframes } => {
+                for k in &keyframes {
+                    assert!(
+                        (k.cx - 0.5).abs() < 0.03,
+                        "outlier leaked into crop path: cx={}",
+                        k.cx
+                    );
+                }
+            }
+            other => panic!("expected FaceCrop, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn pan_speed_is_clamped() {
+        // An instant jump in the (already smoothed) track must become a
+        // bounded pan, never a whip.
+        let mut track = vec![0.2_f32; 6];
+        track.extend(vec![0.8_f32; 6]);
+        let keys = emit_keyframes(&track, 1.0);
+        for w in keys.windows(2) {
+            let dt_s = (w[1].t_ms - w[0].t_ms) as f32 / 1000.0;
+            let v = (w[1].cx - w[0].cx).abs() / dt_s;
+            assert!(v <= MAX_PAN_PER_S + 1e-4, "pan speed {v} exceeds clamp");
+        }
+    }
+
+    #[test]
+    fn multiple_in_frame_detections_average_to_true_mean() {
+        // Three same-frame detections in one cluster: 0.44/0.50/0.56 → 0.50.
+        let det: Vec<Vec<f32>> = (0..30).map(|_| vec![0.44, 0.50, 0.56]).collect();
+        match decide_layout(&det, 30) {
+            LayoutPlan::FaceCrop { keyframes } => {
+                for k in &keyframes {
+                    assert!((k.cx - 0.5).abs() < 1e-4);
+                }
+            }
+            other => panic!("expected FaceCrop, got {:?}", other),
+        }
     }
 }
