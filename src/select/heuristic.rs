@@ -10,30 +10,91 @@ use crate::domain::{Candidate, Scores, Sentence, Transcript};
 use crate::select::overlap_ms;
 
 const HOOK_STARTS: &[&str] = &[
-    "what", "why", "how", "here's", "heres", "the biggest", "the problem", "the thing",
-    "most people", "nobody", "everyone", "everybody", "if you", "let me tell", "the truth",
-    "people think", "you know what", "the mistake", "one thing", "my favorite", "the best",
-    "the worst", "i learned", "i realized", "the secret", "stop", "never", "always",
+    "what",
+    "why",
+    "how",
+    "here's",
+    "heres",
+    "the biggest",
+    "the problem",
+    "the thing",
+    "most people",
+    "nobody",
+    "everyone",
+    "everybody",
+    "if you",
+    "let me tell",
+    "the truth",
+    "people think",
+    "you know what",
+    "the mistake",
+    "one thing",
+    "my favorite",
+    "the best",
+    "the worst",
+    "i learned",
+    "i realized",
+    "the secret",
+    "stop",
+    "never",
+    "always",
 ];
 
 const CONTRAST_CUES: &[&str] = &[
-    "but ", "actually", "the truth is", "turns out", "instead", "wrong", "mistake",
-    "nobody talks", "don't realize", "dont realize", "counterintuitive", "surprised",
-    "the opposite", "not what you think", "myth", "lie",
+    "but ",
+    "actually",
+    "the truth is",
+    "turns out",
+    "instead",
+    "wrong",
+    "mistake",
+    "nobody talks",
+    "don't realize",
+    "dont realize",
+    "counterintuitive",
+    "surprised",
+    "the opposite",
+    "not what you think",
+    "myth",
+    "lie",
 ];
 
 const PAYOFF_CUES: &[&str] = &[
-    "so ", "that's why", "thats why", "which means", "the lesson", "at the end of the day",
-    "that is what", "and that's", "and thats", "the point is", "that changed", "ever since",
-    "now i", "the answer", "it works because", "that's how", "thats how",
+    "so ",
+    "that's why",
+    "thats why",
+    "which means",
+    "the lesson",
+    "at the end of the day",
+    "that is what",
+    "and that's",
+    "and thats",
+    "the point is",
+    "that changed",
+    "ever since",
+    "now i",
+    "the answer",
+    "it works because",
+    "that's how",
+    "thats how",
 ];
 
 const REFERENCE_CUES: &[&str] = &[
-    "as i said", "like i said", "as i mentioned", "like i mentioned", "we talked about",
-    "going back to", "earlier i", "mentioned earlier", "said earlier", "as we discussed",
+    "as i said",
+    "like i said",
+    "as i mentioned",
+    "like i mentioned",
+    "we talked about",
+    "going back to",
+    "earlier i",
+    "mentioned earlier",
+    "said earlier",
+    "as we discussed",
 ];
 
-const PRONOUN_OPENERS: &[&str] = &["that", "this", "it", "he", "she", "they", "which", "those", "and", "so"];
+const PRONOUN_OPENERS: &[&str] = &[
+    "that", "this", "it", "he", "she", "they", "which", "those", "and", "so",
+];
 
 const FILLER_WORDS: &[&str] = &["um", "uh", "like", "you know", "kind of", "sort of"];
 
@@ -88,7 +149,9 @@ pub fn propose(t: &Transcript, source_duration_ms: u64, proposal_count: usize) -
                 best_end = Some((end_score, end_idx));
             }
         }
-        let Some((end_score, end_idx)) = best_end else { continue };
+        let Some((end_score, end_idx)) = best_end else {
+            continue;
+        };
         let closer = &sentences[end_idx];
         let window_text: String = sentences[start_idx..=end_idx]
             .iter()
@@ -102,8 +165,8 @@ pub fn propose(t: &Transcript, source_duration_ms: u64, proposal_count: usize) -
         let first_word = opener_lower.split_whitespace().next().unwrap_or("");
         let vague_open = is_vague_opener(&opener_lower);
         let pronoun_open = PRONOUN_OPENERS.contains(&first_word) || vague_open;
-        let hook = HOOK_STARTS.iter().any(|h| opener_lower.starts_with(h))
-            || opener.text.contains('?');
+        let hook =
+            HOOK_STARTS.iter().any(|h| opener_lower.starts_with(h)) || opener.text.contains('?');
         let contrast = CONTRAST_CUES.iter().any(|c| window_lower.contains(c));
         let payoff_cue = PAYOFF_CUES.iter().any(|c| {
             sentences[end_idx.saturating_sub(1)..=end_idx]
@@ -125,7 +188,13 @@ pub fn propose(t: &Transcript, source_duration_ms: u64, proposal_count: usize) -
         let absolute_claim = contains_absolute_claim(&window_lower);
 
         let self_contained: u8 = match (pronoun_open, reference) {
-            (false, false) => if hook { 5 } else { 4 },
+            (false, false) => {
+                if hook {
+                    5
+                } else {
+                    4
+                }
+            }
             (true, false) => 3,
             (_, true) => 2,
         };
@@ -138,12 +207,41 @@ pub fn propose(t: &Transcript, source_duration_ms: u64, proposal_count: usize) -
         } else {
             3
         };
-        let specificity: u8 =
-            if repeated_claim || has_number && contrast { 5 } else if absolute_claim || has_number || contrast { 4 } else { 3 };
-        let tension: u8 = if exchange || contrast && question_open { 5 } else if contrast || question_open { 4 } else { 3 };
-        let payoff: u8 = if repeated_claim || payoff_cue && end_score >= 2.5 { 5 } else if exchange || payoff_cue || end_score >= 2.2 { 4 } else { 3 };
-        let clarity: u8 = if filler_rate > 0.09 { 3 } else if filler_rate > 0.05 { 4 } else { 5 };
-        let context_dependency: u8 = if reference { 4 } else if pronoun_open { 3 } else { 1 };
+        let specificity: u8 = if repeated_claim || has_number && contrast {
+            5
+        } else if absolute_claim || has_number || contrast {
+            4
+        } else {
+            3
+        };
+        let tension: u8 = if exchange || contrast && question_open {
+            5
+        } else if contrast || question_open {
+            4
+        } else {
+            3
+        };
+        let payoff: u8 = if repeated_claim || payoff_cue && end_score >= 2.5 {
+            5
+        } else if exchange || payoff_cue || end_score >= 2.2 {
+            4
+        } else {
+            3
+        };
+        let clarity: u8 = if filler_rate > 0.09 {
+            3
+        } else if filler_rate > 0.05 {
+            4
+        } else {
+            5
+        };
+        let context_dependency: u8 = if reference {
+            4
+        } else if pronoun_open {
+            3
+        } else {
+            1
+        };
         let slop_risk: u8 = 1; // continuous faithful excerpt, no effects
 
         let scores = Scores {
@@ -214,7 +312,10 @@ pub fn propose(t: &Transcript, source_duration_ms: u64, proposal_count: usize) -
         // Positional diversity: don't let one hot region eat every slot.
         let third = (source_duration_ms / 3).max(1);
         let region = (cand.start_ms / third).min(2);
-        let region_count = kept.iter().filter(|k| (k.start_ms / third).min(2) == region).count();
+        let region_count = kept
+            .iter()
+            .filter(|k| (k.start_ms / third).min(2) == region)
+            .count();
         if region_count >= (proposal_count / 2).max(2) {
             continue;
         }
@@ -281,9 +382,9 @@ fn contains_absolute_claim(text: &str) -> bool {
 fn repeats_elsewhere(sentence: &Sentence, sentences: &[Sentence]) -> bool {
     let claim = normalized_claim(&sentence.text);
     claim.split_whitespace().count() >= 3
-        && sentences
-            .iter()
-            .any(|other| !std::ptr::eq(sentence, other) && normalized_claim(&other.text).contains(&claim))
+        && sentences.iter().any(|other| {
+            !std::ptr::eq(sentence, other) && normalized_claim(&other.text).contains(&claim)
+        })
 }
 
 fn best_headline_sentence(sentences: &[Sentence]) -> &Sentence {
@@ -306,7 +407,9 @@ fn best_headline_sentence(sentences: &[Sentence]) -> &Sentence {
 fn make_headline(opener: &Sentence) -> String {
     let mut text = opener.text.trim().to_string();
     // Strip weak leading connectives for a cleaner headline.
-    for lead in ["so ", "and ", "but ", "um ", "uh ", "well ", "yeah ", "okay ", "ok "] {
+    for lead in [
+        "so ", "and ", "but ", "um ", "uh ", "well ", "yeah ", "okay ", "ok ",
+    ] {
         let lower = text.to_lowercase();
         if lower.starts_with(lead) {
             text = text[lead.len()..].trim_start().to_string();
@@ -326,7 +429,10 @@ fn make_headline(opener: &Sentence) -> String {
 }
 
 fn quote_head(text: &str, words: usize) -> String {
-    text.split_whitespace().take(words).collect::<Vec<_>>().join(" ")
+    text.split_whitespace()
+        .take(words)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn quote_tail(text: &str, words: usize) -> String {
@@ -390,12 +496,22 @@ mod tests {
         for (text, gap) in script {
             t += gap;
             for token in text.split_whitespace() {
-                words.push(Word { text: token.into(), start_ms: t, end_ms: t + 300, p: 0.92 });
+                words.push(Word {
+                    text: token.into(),
+                    start_ms: t,
+                    end_ms: t + 300,
+                    p: 0.92,
+                });
                 t += 360;
             }
         }
         let sentences = build_sentences(&words);
-        Transcript { language: "en".into(), words, sentences, avg_confidence: 0.92 }
+        Transcript {
+            language: "en".into(),
+            words,
+            sentences,
+            avg_confidence: 0.92,
+        }
     }
 
     #[test]

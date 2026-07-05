@@ -25,7 +25,11 @@ pub struct AiSettings {
 
 impl Default for AiSettings {
     fn default() -> Self {
-        AiSettings { provider: PROVIDER_OPENAI.into(), model: String::new(), api_key: None }
+        AiSettings {
+            provider: PROVIDER_OPENAI.into(),
+            model: String::new(),
+            api_key: None,
+        }
     }
 }
 
@@ -50,7 +54,11 @@ impl AiSettings {
 
     pub fn connected(&self) -> bool {
         self.provider == PROVIDER_OFFLINE
-            || self.api_key.as_deref().map(|k| !k.trim().is_empty()).unwrap_or(false)
+            || self
+                .api_key
+                .as_deref()
+                .map(|k| !k.trim().is_empty())
+                .unwrap_or(false)
     }
 
     pub fn public(&self) -> PublicSettings {

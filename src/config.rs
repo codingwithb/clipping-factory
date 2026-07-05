@@ -36,7 +36,9 @@ pub struct Config {
 }
 
 fn env_path(key: &str) -> Option<PathBuf> {
-    std::env::var_os(key).map(PathBuf::from).filter(|p| !p.as_os_str().is_empty())
+    std::env::var_os(key)
+        .map(PathBuf::from)
+        .filter(|p| !p.as_os_str().is_empty())
 }
 
 fn first_existing(cands: Vec<PathBuf>) -> Option<PathBuf> {
@@ -56,11 +58,19 @@ impl Config {
         let homebrew_full = PathBuf::from("/opt/homebrew/opt/ffmpeg-full/bin");
         let ffmpeg = std::env::var("CF_FFMPEG").unwrap_or_else(|_| {
             let binary = homebrew_full.join("ffmpeg");
-            if binary.is_file() { binary.to_string_lossy().into_owned() } else { "ffmpeg".into() }
+            if binary.is_file() {
+                binary.to_string_lossy().into_owned()
+            } else {
+                "ffmpeg".into()
+            }
         });
         let ffprobe = std::env::var("CF_FFPROBE").unwrap_or_else(|_| {
             let binary = homebrew_full.join("ffprobe");
-            if binary.is_file() { binary.to_string_lossy().into_owned() } else { "ffprobe".into() }
+            if binary.is_file() {
+                binary.to_string_lossy().into_owned()
+            } else {
+                "ffprobe".into()
+            }
         });
 
         // whisper.cpp binary: env → PATH → common local build locations.
@@ -90,23 +100,31 @@ impl Config {
             });
 
         // Caption fonts: bundled assets dir preferred.
-        let fonts_dir = env_path("CF_FONTS_DIR")
-            .filter(|p| p.is_dir())
-            .or_else(|| {
-                let d = cwd.join("assets/fonts");
-                if d.is_dir() { Some(d) } else { None }
-            });
-        let caption_font = fonts_dir
+        let fonts_dir = env_path("CF_FONTS_DIR").filter(|p| p.is_dir()).or_else(|| {
+            let d = cwd.join("assets/fonts");
+            if d.is_dir() {
+                Some(d)
+            } else {
+                None
+            }
+        });
+        let caption_font = if fonts_dir
             .as_ref()
             .and_then(|d| std::fs::read_dir(d).ok())
             .map(|entries| {
-                entries
-                    .flatten()
-                    .any(|e| e.file_name().to_string_lossy().to_lowercase().starts_with("inter"))
+                entries.flatten().any(|e| {
+                    e.file_name()
+                        .to_string_lossy()
+                        .to_lowercase()
+                        .starts_with("inter")
+                })
             })
             .unwrap_or(false)
-            .then(|| "Inter".to_string())
-            .unwrap_or_else(|| "DejaVu Sans".to_string());
+        {
+            "Inter".to_string()
+        } else {
+            "DejaVu Sans".to_string()
+        };
 
         let face_model = env_path("CF_FACE_MODEL")
             .filter(|p| p.is_file())
@@ -121,13 +139,22 @@ impl Config {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or_else(|| {
-                std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4)
+                std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4)
             });
 
         Config {
-            port: std::env::var("CF_PORT").ok().and_then(|v| v.parse().ok()).unwrap_or(4571),
-            bind_all: std::env::var("CF_BIND_ALL").map(|v| v == "1").unwrap_or(false),
-            open_browser: std::env::var("CF_NO_OPEN").map(|v| v != "1").unwrap_or(true),
+            port: std::env::var("CF_PORT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(4571),
+            bind_all: std::env::var("CF_BIND_ALL")
+                .map(|v| v == "1")
+                .unwrap_or(false),
+            open_browser: std::env::var("CF_NO_OPEN")
+                .map(|v| v != "1")
+                .unwrap_or(true),
             data_dir,
             output_root,
             ffmpeg,

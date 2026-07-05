@@ -53,7 +53,7 @@ where
         // whisper.cpp prints `whisper_print_progress_callback: progress = 35%`
         if let Some(idx) = line.find("progress =") {
             let tail = &line[idx + 10..];
-            if let Some(pct) = tail.trim().trim_end_matches('%').parse::<f32>().ok() {
+            if let Ok(pct) = tail.trim().trim_end_matches('%').parse::<f32>() {
                 on_progress((pct / 100.0).clamp(0.0, 1.0));
             }
         }
@@ -87,11 +87,18 @@ where
         ));
     }
     let sentences = build_sentences(&words);
-    let avg_confidence =
-        words.iter().map(|w| w.p).sum::<f32>() / (words.len().max(1) as f32);
-    let language = parsed["result"]["language"].as_str().unwrap_or("en").to_string();
+    let avg_confidence = words.iter().map(|w| w.p).sum::<f32>() / (words.len().max(1) as f32);
+    let language = parsed["result"]["language"]
+        .as_str()
+        .unwrap_or("en")
+        .to_string();
 
-    Ok(Transcript { language, words, sentences, avg_confidence })
+    Ok(Transcript {
+        language,
+        words,
+        sentences,
+        avg_confidence,
+    })
 }
 
 fn parse_words(v: &serde_json::Value) -> Vec<Word> {
@@ -128,8 +135,17 @@ fn parse_words(v: &serde_json::Value) -> Vec<Word> {
                 }
             }
         }
-        let p = if p_n > 0 { (p_sum / p_n as f64) as f32 } else { 0.5 };
-        words.push(Word { text, start_ms: from, end_ms: to.max(from), p });
+        let p = if p_n > 0 {
+            (p_sum / p_n as f64) as f32
+        } else {
+            0.5
+        };
+        words.push(Word {
+            text,
+            start_ms: from,
+            end_ms: to.max(from),
+            p,
+        });
     }
     words
 }
@@ -156,7 +172,11 @@ pub fn build_sentences(words: &[Word]) -> Vec<Sentence> {
 
         if terminal || long_pause || too_long || last {
             let slice = &words[start_idx..=i];
-            let text = slice.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ");
+            let text = slice
+                .iter()
+                .map(|w| w.text.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
             sentences.push(Sentence {
                 text,
                 start_ms: slice[0].start_ms,
@@ -176,7 +196,12 @@ mod tests {
     use super::*;
 
     fn w(text: &str, start: u64, end: u64) -> Word {
-        Word { text: text.into(), start_ms: start, end_ms: end, p: 0.9 }
+        Word {
+            text: text.into(),
+            start_ms: start,
+            end_ms: end,
+            p: 0.9,
+        }
     }
 
     #[test]

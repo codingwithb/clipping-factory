@@ -39,7 +39,10 @@ pub fn validate(
             ));
         }
         if !reasons.is_empty() {
-            evaluated.push(Err(RejectedCandidate { candidate: cand, reasons }));
+            evaluated.push(Err(RejectedCandidate {
+                candidate: cand,
+                reasons,
+            }));
             continue;
         }
 
@@ -67,7 +70,10 @@ pub fn validate(
             reasons.push(format!("clarity {} is below 4", s.clarity));
         }
         if s.context_dependency > 2 {
-            reasons.push(format!("context_dependency {} is above 2", s.context_dependency));
+            reasons.push(format!(
+                "context_dependency {} is above 2",
+                s.context_dependency
+            ));
         }
         if s.slop_risk > 2 {
             reasons.push(format!("slop_risk {} is above 2", s.slop_risk));
@@ -76,7 +82,7 @@ pub fn validate(
         // --- Duration with explicit exception path ------------------------
         let dur = cand.end_ms - cand.start_ms;
         let mut duration_exception = false;
-        if dur < MIN_MS || dur > MAX_MS {
+        if !(MIN_MS..=MAX_MS).contains(&dur) {
             let exceptional = s.payoff >= 4 && s.self_contained >= 5 && s.clarity >= 4;
             if (EXC_MIN_MS..=EXC_MAX_MS).contains(&dur) && exceptional {
                 duration_exception = true;
@@ -128,7 +134,10 @@ pub fn validate(
             let composite = composite_score(&s);
             evaluated.push(Ok((cand, duration_exception, composite)));
         } else {
-            evaluated.push(Err(RejectedCandidate { candidate: cand, reasons }));
+            evaluated.push(Err(RejectedCandidate {
+                candidate: cand,
+                reasons,
+            }));
         }
     }
 
@@ -170,7 +179,11 @@ pub fn validate(
         });
     }
 
-    SelectionReport { selector, accepted, rejected }
+    SelectionReport {
+        selector,
+        accepted,
+        rejected,
+    }
 }
 
 pub fn composite_score(s: &Scores) -> f32 {
@@ -269,7 +282,12 @@ mod tests {
             });
         }
         let sentences = crate::transcribe::build_sentences(&words);
-        Transcript { language: "en".into(), words, sentences, avg_confidence: 0.9 }
+        Transcript {
+            language: "en".into(),
+            words,
+            sentences,
+            avg_confidence: 0.9,
+        }
     }
 
     fn good_scores() -> Scores {
@@ -298,7 +316,11 @@ mod tests {
     }
 
     fn excerpt_head(t: &Transcript, s: u64, e: u64, n: usize) -> String {
-        excerpt_text(t, s, e).split_whitespace().take(n).collect::<Vec<_>>().join(" ")
+        excerpt_text(t, s, e)
+            .split_whitespace()
+            .take(n)
+            .collect::<Vec<_>>()
+            .join(" ")
     }
     fn excerpt_tail(t: &Transcript, s: u64, e: u64, n: usize) -> String {
         let text = excerpt_text(t, s, e);
@@ -351,10 +373,20 @@ mod tests {
     fn rejects_out_of_range_duration() {
         let t = transcript(1500, 400);
         // 10s — too short even for the exception.
-        let r = validate(vec![cand(&t, 10_000, 20_000, good_scores())], &t, SRC, "t".into());
+        let r = validate(
+            vec![cand(&t, 10_000, 20_000, good_scores())],
+            &t,
+            SRC,
+            "t".into(),
+        );
         assert_eq!(r.accepted.len(), 0);
         // 150s — too long even for the exception.
-        let r = validate(vec![cand(&t, 10_000, 160_000, good_scores())], &t, SRC, "t".into());
+        let r = validate(
+            vec![cand(&t, 10_000, 160_000, good_scores())],
+            &t,
+            SRC,
+            "t".into(),
+        );
         assert_eq!(r.accepted.len(), 0);
     }
 
@@ -362,7 +394,12 @@ mod tests {
     fn duration_exception_requires_exceptional_scores() {
         let t = transcript(1500, 400);
         // 17s, exceptional scores → accepted with the exception flag.
-        let r = validate(vec![cand(&t, 10_000, 27_000, good_scores())], &t, SRC, "t".into());
+        let r = validate(
+            vec![cand(&t, 10_000, 27_000, good_scores())],
+            &t,
+            SRC,
+            "t".into(),
+        );
         assert_eq!(r.accepted.len(), 1);
         assert!(r.accepted[0].duration_exception);
         // 17s, mediocre payoff → rejected.
@@ -417,7 +454,7 @@ mod tests {
         let strong = cand(&t, 10_000, 70_000, good_scores());
         let mut weaker_scores = good_scores();
         weaker_scores.opening_strength = 3; // lower composite
-        // 40s candidate overlapping 30s with `strong` → 75% overlap → rejected.
+                                            // 40s candidate overlapping 30s with `strong` → 75% overlap → rejected.
         let overlapping = cand(&t, 40_000, 80_000, weaker_scores);
         // Distant candidate survives.
         let distant = cand(&t, 200_000, 250_000, weaker_scores);

@@ -88,7 +88,10 @@ where
         bail!(
             "`{}` exited with {} — {}",
             bin,
-            status.code().map(|c| c.to_string()).unwrap_or_else(|| "signal".into()),
+            status
+                .code()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "signal".into()),
             stderr_tail.iter().cloned().collect::<Vec<_>>().join(" | ")
         );
     }
@@ -226,7 +229,10 @@ mod tests {
 
     #[test]
     fn slugify_truncates() {
-        let s = slugify("a very long headline that keeps going and going and going", 20);
+        let s = slugify(
+            "a very long headline that keeps going and going and going",
+            20,
+        );
         assert!(s.len() <= 20, "got {} ({})", s.len(), s);
         assert!(!s.ends_with('-'));
     }
