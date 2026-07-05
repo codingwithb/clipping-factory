@@ -8,9 +8,10 @@ Local-first podcast clipping with transcript ranking, face-aware reframing, and
 word-accurate captions. Built entirely in Rust.
 
 ![Rust](https://img.shields.io/badge/Rust-000000?logo=rust&logoColor=white)
+![CI](https://github.com/bramhacharyabishesha-hub/clipping-factory/actions/workflows/ci.yml/badge.svg)
 ![Local first](https://img.shields.io/badge/processing-local--first-1f6feb)
 ![Output](https://img.shields.io/badge/output-1080%C3%971920-7c3aed)
-![Tests](https://img.shields.io/badge/tests-50%20passing-238636)
+![Tests](https://img.shields.io/badge/tests-62%20passing-238636)
 
 </div>
 
@@ -33,7 +34,7 @@ context-dependent or overlapping moments before anything renders.
 | **More useful candidates** | Local ranking keeps every strong, sufficiently distinct moment instead of stopping at three. |
 | **Faithful excerpts** | Speech is never rewritten, reordered, spliced, or invented. |
 | **Feed-ready video** | H.264/AAC, 1080×1920, face-tracked crop or a safe blur-pad fallback. |
-| **Karaoke captions** | Word-timestamped Impact and Clean caption styles with selectable accent colors. |
+| **Karaoke captions** | Word-timestamped Impact and Clean styles. Restyle any finished clip — style and accent color — in seconds, without a re-render. |
 | **Private by default** | Video, audio, transcript, project state, and rendering stay on your Mac. |
 
 <p align="center">
@@ -44,7 +45,8 @@ context-dependent or overlapping moments before anything renders.
 Drop MP4 → Inspect → Extract audio → Transcribe (whisper.cpp, word timestamps)
         → Find moments (local ranking, or optional OpenAI/Anthropic)
         → Deterministic quality validator → Face-aware framing analysis
-        → Sequential FFmpeg renders → Preview & download each clip
+        → Two-pass FFmpeg renders (framed base + caption burn)
+        → Preview, restyle captions per clip & download
 ```
 
 ---
@@ -116,9 +118,11 @@ Every AI proposal must survive these deterministic rules before it renders
 Zero survivors is a valid result: the studio says no excerpt passed the bar, and the
 **"What was considered and rejected"** panel shows each rejection with its named rule.
 
-## Caption styles
+## Caption styles — pick them *after* rendering
 
-Pick per-upload in the studio (or set the default with `CF_CAPTION_STYLE`):
+Clips render in the house default first (Impact — change the default with
+`CF_CAPTION_STYLE=clean`). Then every finished clip card offers a restyle
+control: switch style, pick any accent color, hit Apply.
 
 - **Impact** (default) — kinetic stacked lockups. Each phrase renders as a tight,
   ragged stack: connective words small, the key word HUGE in caps, the currently
@@ -126,6 +130,12 @@ Pick per-upload in the studio (or set the default with `CF_CAPTION_STYLE`):
   short-form feeds.
 - **Clean** — the restrained original: 3–7 word groups in the lower safe area,
   white with a soft outline, one amber accent on the active word.
+
+Restyling re-burns captions from the clip's cached, uncaptioned base render —
+seconds of work, not a full re-render — and refreshes both the studio preview
+and the copy in your output folder
+(`POST /api/projects/{id}/clips/{clipId}/restyle`). Projects rendered by older
+versions rebuild the base once, automatically.
 
 ## The house rendering rules (applied to both styles)
 
@@ -145,7 +155,8 @@ Pick per-upload in the studio (or set the default with `CF_CAPTION_STYLE`):
 ```
 ~/Downloads/Clipping Factory/<source-name>/   ← finished clips (01-headline-slug.mp4)
 ~/.clipping-factory/projects/<project-id>/    ← project.json, transcript.json,
-                                                 candidates.json, render-manifest.json, clips/
+                                                 candidates.json, render-manifest.json,
+                                                 clips/ (finals + base/ restyle intermediates)
 ```
 
 Filesystem JSON only — no database. Temporary audio is deleted after transcription.
@@ -165,7 +176,7 @@ last completed stage (finished clips are never re-rendered).
 | Editorial selection | Local full-transcript ranking, or OpenAI / Anthropic with 12-minute overlapping transcript windows |
 | Quality gate | Pure-Rust deterministic validator (`src/validate.rs`) |
 | Framing | rustface (SeetaFace) over 1 fps sampled frames → layout decision + smoothed crop keyframes |
-| Captions | Generated ASS subtitles burned by libass (`Inter`, bundled in `assets/fonts/`) |
+| Captions | Generated ASS subtitles burned by libass (`Inter`, bundled in `assets/fonts/`) in a fast second pass over cached base renders — per-clip restyling |
 | State | Filesystem JSON with atomic writes |
 
 ```
@@ -189,8 +200,9 @@ Everything's overridable via environment variables: `CF_PORT`, `CF_DATA_DIR`, `C
 ### Tests
 
 ```bash
-cargo test   # 50 tests: every validator rule, caption pagination, crop math,
-             # layout decisions, selector parsing, state recovery
+cargo test   # 62 tests: every validator rule, caption pagination, crop math,
+             # face-track smoothing & pan clamping, layout decisions, restyle
+             # plumbing, selector parsing, state recovery
 ```
 
 ---

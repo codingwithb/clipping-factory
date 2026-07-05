@@ -1,0 +1,35 @@
+# GitHub Actions CI for Clipping Factory.
+#
+# GitHub's API refuses workflow-file writes without the 'workflow' OAuth
+# scope, so this file ships here instead of .github/workflows/. Activate
+# it with one command from the repo root:
+#
+#   mkdir -p .github/workflows && cp docs/ci-workflow.yml .github/workflows/ci.yml \
+#     && git add .github/workflows/ci.yml && git commit -m 'chore(ci): enable CI' && git push
+#
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: fmt · clippy · test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Formatting
+        run: cargo fmt --all --check
+      - name: Clippy (deny warnings)
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Tests
+        run: cargo test
