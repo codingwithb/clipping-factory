@@ -6,214 +6,41 @@
   <title>Clipping Factory</title>
   <link rel="stylesheet" href="/styles.css">
   <style>
-    .review-theater[hidden] { display: none; }
-    .review-theater { position: fixed; inset: 0; z-index: 1000; background: rgba(10,10,10,.97); color: #f7f7f2; display: grid; grid-template-rows: auto 1fr auto; padding: 22px; }
-    .review-top, .review-bottom { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
-    .review-top { padding-bottom: 16px; }
-    .review-bottom { padding-top: 16px; }
-    .review-stage { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 360px); gap: 24px; align-items: center; justify-content: center; }
-    .review-stage video { width: 100%; height: 100%; max-height: calc(100vh - 190px); object-fit: contain; border-radius: 10px; background: #000; }
-    .review-copy h2 { font-size: clamp(24px, 3vw, 42px); line-height: 1.08; margin: 0 0 14px; }
-    .review-copy p { color: #b8b8b0; line-height: 1.55; }
-    .review-kbd { font-size: 12px; color: #a7a79f; }
-    .review-decisions { display: flex; gap: 10px; flex-wrap: wrap; }
-    .review-decisions button { border-color: #777; background: #191919; color: #fff; min-width: 110px; }
-    .review-decisions button.active { background: #f5f5ef; color: #111; border-color: #f5f5ef; }
-    .review-close { background: transparent; color: #fff; border-color: #666; }
-    .review-counts { color: #aaa; font-size: 13px; }
-    .review-badge { display: inline-flex; align-items: center; margin: 0 0 8px 8px; padding: 3px 8px; border: 1px solid #aaa; border-radius: 999px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
-    .clip.review-skip { opacity: .52; }
-    #review-clips-btn { white-space: nowrap; }
-    @media (max-width: 760px) {
-      .review-theater { padding: 14px; }
-      .review-stage { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; gap: 12px; }
-      .review-stage video { max-height: 58vh; }
-      .review-copy h2 { font-size: 24px; }
-      .review-copy p { margin: 8px 0; }
-      .review-bottom { align-items: flex-end; }
-      .review-decisions button { min-width: 82px; }
-    }
+    .review-theater[hidden]{display:none}.review-theater{position:fixed;inset:0;z-index:1000;background:rgba(10,10,10,.97);color:#f7f7f2;display:grid;grid-template-rows:auto 1fr auto;padding:22px}.review-top,.review-bottom{display:flex;align-items:center;justify-content:space-between;gap:18px}.review-top{padding-bottom:16px}.review-bottom{padding-top:16px}.review-stage{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,360px);gap:24px;align-items:center}.review-stage video{width:100%;height:100%;max-height:calc(100vh - 190px);object-fit:contain;border-radius:10px;background:#000}.review-copy h2{font-size:clamp(24px,3vw,42px);line-height:1.08;margin:0 0 14px}.review-copy p{color:#b8b8b0;line-height:1.55}.review-kbd,.review-counts{font-size:12px;color:#aaa}.review-decisions{display:flex;gap:10px;flex-wrap:wrap}.review-decisions button{border-color:#777;background:#191919;color:#fff;min-width:110px}.review-decisions button.active{background:#f5f5ef;color:#111;border-color:#f5f5ef}.review-close{background:transparent;color:#fff;border-color:#666}.review-badge{display:inline-flex;align-items:center;margin:0 0 8px 8px;padding:3px 8px;border:1px solid #aaa;border-radius:999px;font-size:11px;text-transform:uppercase;letter-spacing:.06em}.clip.review-skip{opacity:.52}#review-clips-btn{white-space:nowrap}@media(max-width:760px){.review-theater{padding:14px}.review-stage{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr) auto;gap:12px}.review-stage video{max-height:58vh}.review-copy h2{font-size:24px}.review-bottom{align-items:flex-end}.review-decisions button{min-width:82px}}
   </style>
 </head>
 <body>
   <div class="shell">
-    <header>
-      <div>
-        <h1>Clipping Factory</h1>
-        <p class="muted tagline">One podcast in. A few faithful clips out.</p>
-      </div>
-      <button id="ai-btn" type="button"><span id="ai-dot" class="dot"></span><span id="ai-label">AI connection</span></button>
-    </header>
-    <div id="setup-banner" class="banner hidden"></div>
-    <div id="warning-banner" class="banner warn hidden"></div>
-    <section id="upload-state">
-      <div id="drop" class="upload">
-        <strong>Drop one podcast MP4 here</strong>
-        <p class="muted">The original stays on this computer. Clips keep the original conversation intact — one continuous excerpt each, no invented speech.</p>
-        <button id="choose-btn" class="primary" type="button">Choose MP4</button>
-        <input id="file-input" type="file" accept="video/mp4,.mp4,.m4v" hidden>
-        <p class="muted small">Supported input: MP4 with at least one audio stream, 20 seconds to 4 hours.<br>Caption style and highlight color? Pick them on each finished clip — restyling takes seconds, not a re-render.</p>
-      </div>
-      <div id="upload-progress" class="hidden"><p id="upload-label">Uploading…</p><div class="bar"><div id="upload-bar" class="bar-fill"></div></div></div>
-    </section>
-    <section id="processing-state" class="hidden">
-      <div class="source-line"><div><span id="source-name" class="source-name"></span><span id="source-meta" class="muted"></span></div><button id="cancel-btn" type="button">Cancel</button></div>
-      <div id="stages" class="progress"></div>
-      <div id="current-op" class="current-op hidden"><span class="spinner"></span><span id="current-op-text"></span><span id="elapsed" class="muted"></span></div>
-      <div id="error-box" class="error hidden"><div><strong id="error-stage"></strong><p id="error-text"></p></div><button id="retry-btn" class="primary" type="button">Retry stage</button></div>
-    </section>
-    <section id="results-state" class="hidden">
-      <div class="results-head">
-        <div><h2 id="results-title"></h2><p class="muted" id="results-sub">Ranked by self-contained opening, tension, payoff, and clarity.</p></div>
-        <div class="results-actions"><button id="review-clips-btn" type="button" hidden>Review clips</button><button id="open-folder-btn" type="button">Open output folder</button><button id="new-project-btn" type="button">New project</button></div>
-      </div>
-      <div id="clips"></div>
-      <div id="empty-results" class="empty-results hidden"><strong>No excerpt passed the quality bar.</strong><p class="muted">This source didn't contain a moment that stands alone at the required quality. Clipping Factory returns fewer clips rather than bad ones. Try a longer or more speech-led recording.</p></div>
-      <details id="rejected-details" class="rejected hidden"><summary>What was considered and rejected</summary><div id="rejected-list"></div></details>
-    </section>
+    <header><div><h1>Clipping Factory</h1><p class="muted tagline">One podcast in. A few faithful clips out.</p></div><button id="ai-btn" type="button"><span id="ai-dot" class="dot"></span><span id="ai-label">AI connection</span></button></header>
+    <div id="setup-banner" class="banner hidden"></div><div id="warning-banner" class="banner warn hidden"></div>
+    <section id="upload-state"><div id="drop" class="upload"><strong>Drop one podcast MP4 here</strong><p class="muted">The original stays on this computer. Clips keep the original conversation intact — one continuous excerpt each, no invented speech.</p><button id="choose-btn" class="primary" type="button">Choose MP4</button><input id="file-input" type="file" accept="video/mp4,.mp4,.m4v" hidden><p class="muted small">Supported input: MP4 with at least one audio stream, 20 seconds to 4 hours.<br>Caption style and highlight color? Pick them on each finished clip — restyling takes seconds, not a re-render.</p></div><div id="upload-progress" class="hidden"><p id="upload-label">Uploading…</p><div class="bar"><div id="upload-bar" class="bar-fill"></div></div></div></section>
+    <section id="processing-state" class="hidden"><div class="source-line"><div><span id="source-name" class="source-name"></span><span id="source-meta" class="muted"></span></div><button id="cancel-btn" type="button">Cancel</button></div><div id="stages" class="progress"></div><div id="current-op" class="current-op hidden"><span class="spinner"></span><span id="current-op-text"></span><span id="elapsed" class="muted"></span></div><div id="error-box" class="error hidden"><div><strong id="error-stage"></strong><p id="error-text"></p></div><button id="retry-btn" class="primary" type="button">Retry stage</button></div></section>
+    <section id="results-state" class="hidden"><div class="results-head"><div><h2 id="results-title"></h2><p class="muted" id="results-sub">Ranked by self-contained opening, tension, payoff, and clarity.</p></div><div class="results-actions"><button id="review-clips-btn" type="button" hidden>Review clips</button><button id="open-folder-btn" type="button">Open output folder</button><button id="new-project-btn" type="button">New project</button></div></div><div id="clips"></div><div id="empty-results" class="empty-results hidden"><strong>No excerpt passed the quality bar.</strong><p class="muted">This source didn't contain a moment that stands alone at the required quality. Clipping Factory returns fewer clips rather than bad ones. Try a longer or more speech-led recording.</p></div><details id="rejected-details" class="rejected hidden"><summary>What was considered and rejected</summary><div id="rejected-list"></div></details></section>
     <footer class="muted small">Processing happens locally. Only transcript text is sent to your AI provider — never the video.</footer>
   </div>
-  <div id="modal-backdrop" class="modal-backdrop hidden">
-    <div class="modal">
-      <h3>AI connection</h3>
-      <p class="muted small">The editorial selector proposes which moments stand alone. Your key is stored locally with user-only permissions, never logged, and never shown again.</p>
-      <label>Provider<select id="provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="offline">Local ranking (no key)</option></select></label>
-      <label id="model-row">Model<input id="model" type="text" placeholder="gpt-4o-mini"></label>
-      <label id="key-row">API key<input id="api-key" type="password" placeholder="sk-…" autocomplete="off"></label>
-      <p id="offline-note" class="muted small hidden">Local ranking scans the full transcript for strong openings, reactions, repeated claims, clean endings, and standalone clarity. No model or API key is required.</p>
-      <p id="test-result" class="small hidden"></p>
-      <div class="modal-actions"><button id="modal-close" type="button">Close</button><button id="test-save" class="primary" type="button">Test &amp; save</button></div>
-    </div>
-  </div>
-  <div id="review-theater" class="review-theater" role="dialog" aria-modal="true" aria-label="Clip review theater" hidden>
-    <div class="review-top"><div><strong id="review-progress">1 / 1</strong><span id="review-counts" class="review-counts"></span></div><button id="review-close" class="review-close" type="button">Close · Esc</button></div>
-    <div class="review-stage"><video id="review-video" controls playsinline></video><div class="review-copy"><h2 id="review-title"></h2><p id="review-reason"></p><div class="review-kbd">← → navigate · Space play/pause · 1 Keep · 2 Maybe · 3 Skip</div></div></div>
-    <div class="review-bottom"><div class="review-decisions"><button type="button" data-review-decision="keep">1 · Keep</button><button type="button" data-review-decision="maybe">2 · Maybe</button><button type="button" data-review-decision="skip">3 · Skip</button></div><span class="review-counts">Decide and jump to the next clip</span></div>
-  </div>
+  <div id="modal-backdrop" class="modal-backdrop hidden"><div class="modal"><h3>AI connection</h3><p class="muted small">The editorial selector proposes which moments stand alone. Your key is stored locally with user-only permissions, never logged, and never shown again.</p><label>Provider<select id="provider"><option value="openai">OpenAI</option><option value="anthropic">Anthropic</option><option value="offline">Local ranking (no key)</option></select></label><label id="model-row">Model<input id="model" type="text" placeholder="gpt-4o-mini"></label><label id="key-row">API key<input id="api-key" type="password" placeholder="sk-…" autocomplete="off"></label><p id="offline-note" class="muted small hidden">Local ranking scans the full transcript for strong openings, reactions, repeated claims, clean endings, and standalone clarity. No model or API key is required.</p><p id="test-result" class="small hidden"></p><div class="modal-actions"><button id="modal-close" type="button">Close</button><button id="test-save" class="primary" type="button">Test &amp; save</button></div></div></div>
+  <div id="review-theater" class="review-theater" role="dialog" aria-modal="true" aria-label="Clip review theater" hidden><div class="review-top"><div><strong id="review-progress">1 / 1</strong><span id="review-counts" class="review-counts"></span></div><button id="review-close" class="review-close" type="button">Close · Esc</button></div><div class="review-stage"><video id="review-video" controls playsinline></video><div class="review-copy"><h2 id="review-title"></h2><p id="review-reason"></p><div class="review-kbd">← → navigate · Space play/pause · 1 Keep · 2 Maybe · 3 Skip</div></div></div><div class="review-bottom"><div class="review-decisions"><button type="button" data-review-decision="keep">1 · Keep</button><button type="button" data-review-decision="maybe">2 · Maybe</button><button type="button" data-review-decision="skip">3 · Skip</button></div><span class="review-counts">Decide and jump to the next clip</span></div></div>
   <script src="/app.js"></script>
   <script>
-    (() => {
-      const STORAGE_KEY = "cf-review-decisions-v1";
-      const clipsRoot = document.getElementById("clips");
-      const results = document.getElementById("results-state");
-      const openBtn = document.getElementById("review-clips-btn");
-      const theater = document.getElementById("review-theater");
-      const video = document.getElementById("review-video");
-      const title = document.getElementById("review-title");
-      const reason = document.getElementById("review-reason");
-      const progress = document.getElementById("review-progress");
-      const counts = document.getElementById("review-counts");
-      const decisionBtns = [...theater.querySelectorAll("[data-review-decision]")];
-      let items = [];
-      let index = 0;
-      let decisions = loadDecisions();
-
-      function loadDecisions() {
-        try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {}; }
-        catch (_) { return {}; }
-      }
-      function saveDecisions() {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(decisions)); } catch (_) {}
-      }
-      function keyFor(src) {
-        try { return new URL(src, location.href).pathname; } catch (_) { return src; }
-      }
-      function collect() {
-        items = [...clipsRoot.querySelectorAll("article.clip")].flatMap((card) => {
-          const player = card.querySelector(".preview video");
-          if (!player) return [];
-          return [{ card, player, key: keyFor(player.src), title: card.querySelector("h3")?.textContent || "Untitled clip", reason: card.querySelector(".why")?.textContent || "" }];
-        });
-        openBtn.hidden = items.length === 0;
-        applyCardDecisions();
-        if (!theater.hidden) {
-          if (!items.length) closeReview();
-          else { index = Math.min(index, items.length - 1); showCurrent(false); }
-        }
-      }
-      function applyCardDecisions() {
-        for (const item of items) {
-          item.card.querySelector(".review-badge")?.remove();
-          item.card.classList.remove("review-skip");
-          const decision = decisions[item.key];
-          if (!decision) continue;
-          const badge = document.createElement("span");
-          badge.className = "review-badge";
-          badge.textContent = decision;
-          item.card.querySelector(".rank")?.appendChild(badge);
-          item.card.classList.toggle("review-skip", decision === "skip");
-        }
-      }
-      function updateCounts() {
-        const currentKeys = new Set(items.map((item) => item.key));
-        const tally = { keep: 0, maybe: 0, skip: 0 };
-        for (const [key, value] of Object.entries(decisions)) if (currentKeys.has(key) && value in tally) tally[value]++;
-        counts.textContent = ` · ${tally.keep} keep · ${tally.maybe} maybe · ${tally.skip} skip`;
-      }
-      function showCurrent(autoplay = true) {
-        const item = items[index];
-        if (!item) return;
-        if (video.src !== item.player.src) video.src = item.player.src;
-        title.textContent = item.title;
-        reason.textContent = item.reason;
-        progress.textContent = `${index + 1} / ${items.length}`;
-        updateCounts();
-        const current = decisions[item.key];
-        for (const button of decisionBtns) button.classList.toggle("active", button.dataset.reviewDecision === current);
-        if (autoplay) video.play().catch(() => {});
-      }
-      function openReview() {
-        collect();
-        if (!items.length) return;
-        index = Math.max(0, items.findIndex((item) => !decisions[item.key]));
-        theater.hidden = false;
-        document.body.style.overflow = "hidden";
-        showCurrent(true);
-      }
-      function closeReview() {
-        video.pause();
-        theater.hidden = true;
-        document.body.style.overflow = "";
-        applyCardDecisions();
-      }
-      function decide(value) {
-        const item = items[index];
-        if (!item) return;
-        decisions[item.key] = value;
-        saveDecisions();
-        applyCardDecisions();
-        if (index < items.length - 1) { index++; showCurrent(true); }
-        else showCurrent(false);
-      }
-      function move(delta) {
-        const next = Math.max(0, Math.min(items.length - 1, index + delta));
-        if (next !== index) { index = next; showCurrent(true); }
-      }
-      function typingTarget(target) {
-        return target instanceof Element && (target.matches("input, select, textarea") || target.isContentEditable);
-      }
-
-      openBtn.addEventListener("click", openReview);
-      document.getElementById("review-close").addEventListener("click", closeReview);
-      for (const button of decisionBtns) button.addEventListener("click", () => decide(button.dataset.reviewDecision));
-      theater.addEventListener("click", (event) => { if (event.target === theater) closeReview(); });
-      document.addEventListener("keydown", (event) => {
-        if (typingTarget(event.target)) return;
-        if (theater.hidden) {
-          if ((event.key === "r" || event.key === "R") && !results.classList.contains("hidden") && items.length) { event.preventDefault(); openReview(); }
-          return;
-        }
-        if (event.key === "Escape") closeReview();
-        else if (event.key === "ArrowLeft") { event.preventDefault(); move(-1); }
-        else if (event.key === "ArrowRight") { event.preventDefault(); move(1); }
-        else if (event.key === " ") { event.preventDefault(); video.paused ? video.play().catch(() => {}) : video.pause(); }
-        else if (event.key === "1") decide("keep");
-        else if (event.key === "2") decide("maybe");
-        else if (event.key === "3") decide("skip");
-      });
-      new MutationObserver(collect).observe(clipsRoot, { childList: true, subtree: true });
-      collect();
-    })();
+  (()=>{
+    const STORE="cf-review-decisions-v1",root=document.getElementById("clips"),results=document.getElementById("results-state"),open=document.getElementById("review-clips-btn"),theater=document.getElementById("review-theater"),video=document.getElementById("review-video"),title=document.getElementById("review-title"),reason=document.getElementById("review-reason"),progress=document.getElementById("review-progress"),counts=document.getElementById("review-counts"),buttons=[...theater.querySelectorAll("[data-review-decision]")];
+    let items=[],index=0,decisions=load();
+    function load(){try{return JSON.parse(localStorage.getItem(STORE)||"{}")||{}}catch(_){return{}}}
+    function save(){try{localStorage.setItem(STORE,JSON.stringify(decisions))}catch(_){}}
+    function key(src){try{return new URL(src,location.href).pathname}catch(_){return src}}
+    function collect(){items=[...root.querySelectorAll("article.clip")].flatMap(card=>{const player=card.querySelector(".preview video");return player?[{card,player,key:key(player.src),title:card.querySelector("h3")?.textContent||"Untitled clip",reason:card.querySelector(".why")?.textContent||""}]:[]});open.hidden=!items.length;paint();if(!theater.hidden){if(!items.length)closeReview();else{index=Math.min(index,items.length-1);show(false)}}}
+    function paint(){for(const item of items){const old=item.card.querySelector(".review-badge"),decision=decisions[item.key];item.card.classList.toggle("review-skip",decision==="skip");if(!decision){old?.remove();continue}if(old&&old.textContent===decision)continue;old?.remove();const badge=document.createElement("span");badge.className="review-badge";badge.textContent=decision;item.card.querySelector(".rank")?.appendChild(badge)}}
+    function updateCounts(){const keys=new Set(items.map(i=>i.key)),t={keep:0,maybe:0,skip:0};for(const[k,v]of Object.entries(decisions))if(keys.has(k)&&v in t)t[v]++;counts.textContent=` · ${t.keep} keep · ${t.maybe} maybe · ${t.skip} skip`}
+    function show(autoplay=true){const item=items[index];if(!item)return;if(video.src!==item.player.src)video.src=item.player.src;title.textContent=item.title;reason.textContent=item.reason;progress.textContent=`${index+1} / ${items.length}`;updateCounts();for(const b of buttons)b.classList.toggle("active",b.dataset.reviewDecision===decisions[item.key]);if(autoplay)video.play().catch(()=>{})}
+    function openReview(){collect();if(!items.length)return;const first=items.findIndex(i=>!decisions[i.key]);index=first<0?0:first;theater.hidden=false;document.body.style.overflow="hidden";show(true)}
+    function closeReview(){video.pause();theater.hidden=true;document.body.style.overflow="";paint()}
+    function decide(value){const item=items[index];if(!item)return;decisions[item.key]=value;save();paint();if(index<items.length-1){index++;show(true)}else show(false)}
+    function move(delta){const next=Math.max(0,Math.min(items.length-1,index+delta));if(next!==index){index=next;show(true)}}
+    function typing(target){return target instanceof Element&&(target.matches("input,select,textarea")||target.isContentEditable)}
+    open.addEventListener("click",openReview);document.getElementById("review-close").addEventListener("click",closeReview);for(const b of buttons)b.addEventListener("click",()=>decide(b.dataset.reviewDecision));
+    document.addEventListener("keydown",event=>{if(typing(event.target))return;if(theater.hidden){if((event.key==="r"||event.key==="R")&&!results.classList.contains("hidden")&&items.length){event.preventDefault();openReview()}return}if(event.key==="Escape")closeReview();else if(event.key==="ArrowLeft"){event.preventDefault();move(-1)}else if(event.key==="ArrowRight"){event.preventDefault();move(1)}else if(event.key===" "){event.preventDefault();video.paused?video.play().catch(()=>{}):video.pause()}else if(event.key==="1")decide("keep");else if(event.key==="2")decide("maybe");else if(event.key==="3")decide("skip")});
+    new MutationObserver(collect).observe(root,{childList:true});collect();
+  })();
   </script>
 </body>
 </html>
