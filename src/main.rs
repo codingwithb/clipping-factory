@@ -3,6 +3,7 @@
 //!
 //! Launch with one command: `cargo run --release` (or run the built binary).
 
+mod accent;
 mod api;
 mod captions;
 mod config;

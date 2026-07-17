@@ -172,6 +172,7 @@ mod tests {
                 low_confidence: false,
                 caption_style: Some("impact".into()),
                 accent_color: Some("#FFDD00".into()),
+                caption_font: Some("Inter".into()),
             }],
             output_dir: Some("/tmp/out".into()),
         };

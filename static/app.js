@@ -23,6 +23,8 @@
   // Last style/color the user applied — the starting point for new restyles.
   let captionStyle = localStorage.getItem("cf-caption-style") || "impact";
   let accentColor = localStorage.getItem("cf-accent-color") || "#FFDD00";
+  let captionFonts = [];
+  let captionDefaultFont = "Inter";
   const ACCENT_PRESETS = ["#FFDD00", "#7CFF4F", "#FF4F4F", "#4FB5FF", "#C77DFF", "#FF9F1C"];
   const clipRev = {}; // clip id → cache-busting token after a restyle
 
@@ -38,12 +40,15 @@
       if (!s.model_ok) problems.push(`Transcription model missing (~148 MB). Download ggml-base.en.bin into ${s.data_dir}/models/`);
       if (s.disk_free_gb !== null && s.disk_free_gb < 2) problems.push(`Low disk space: ${s.disk_free_gb.toFixed(1)} GB free.`);
       const banner = $("setup-banner");
+      captionDefaultFont = s.caption_font || captionDefaultFont;
+      if (Array.isArray(s.caption_fonts) && s.caption_fonts.length) captionFonts = s.caption_fonts;
       if (problems.length) {
         banner.textContent = problems.join("\n");
         banner.classList.remove("hidden");
       } else {
         banner.classList.add("hidden");
       }
+      if (view) render();
     } catch { /* server will complain loudly enough */ }
   }
 
@@ -80,6 +85,17 @@
     });
   }
 
+  function wireUploadOptions() {
+    const picker = $("upload-accent-color");
+    picker.value = accentColor;
+    $("upload-accent-hex").textContent = accentColor;
+    picker.addEventListener("input", (e) => {
+      accentColor = e.target.value.toUpperCase();
+      $("upload-accent-hex").textContent = accentColor;
+      document.querySelector('input[name="accent-mode"][value="manual"]').checked = true;
+    });
+  }
+
   function uploadFile(file) {
     if (!/\.(mp4|m4v)$/i.test(file.name)) {
       alert("Attach an .mp4 file (the MVP accepts MP4 sources only).");
@@ -91,7 +107,10 @@
 
     const form = new FormData();
     const framingMode = document.querySelector('input[name="framing-mode"]:checked').value;
+    const accentMode = document.querySelector('input[name="accent-mode"]:checked').value;
     form.append("framing_mode", framingMode);
+    form.append("accent_mode", accentMode);
+    form.append("accent_color", $("upload-accent-color").value.toUpperCase());
     form.append("file", file, file.name);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/projects");
@@ -378,6 +397,8 @@
     box.className = "restyle";
     let selStyle = c.caption_style || captionStyle;
     let selColor = (c.accent_color || accentColor).toUpperCase();
+    let selFont = c.caption_font || captionDefaultFont;
+    let fontChanged = false;
 
     const label = document.createElement("span");
     label.className = "muted small restyle-label";
@@ -414,6 +435,30 @@
     custom.addEventListener("input", (e) => { selColor = e.target.value.toUpperCase(); sync(); });
     swatches.appendChild(custom);
 
+    const font = document.createElement("select");
+    font.className = "font-select";
+    font.title = "Caption font";
+    const availableFonts = captionFonts.includes(selFont)
+      ? captionFonts
+      : [selFont, ...captionFonts];
+    for (const name of availableFonts) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      option.selected = name === selFont;
+      font.appendChild(option);
+    }
+    font.addEventListener("change", () => {
+      selFont = font.value;
+      fontChanged = true;
+    });
+    const fontPicker = document.createElement("label");
+    fontPicker.className = "font-picker";
+    const fontLabel = document.createElement("span");
+    fontLabel.textContent = "Font";
+    fontPicker.appendChild(fontLabel);
+    fontPicker.appendChild(font);
+
     const apply = document.createElement("button");
     apply.type = "button";
     apply.textContent = "Apply";
@@ -432,10 +477,12 @@
       apply.textContent = "Restyling…";
       status.textContent = "Re-burning captions…";
       try {
+        const payload = { style: selStyle, accent_color: selColor };
+        if (fontChanged) payload.font = selFont;
         const res = await fetch(`/api/projects/${projectId}/clips/${c.id}/restyle`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ style: selStyle, accent_color: selColor }),
+          body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error((await res.json()).error || "Restyle failed.");
         const updated = await res.json();
@@ -457,6 +504,7 @@
     box.appendChild(label);
     box.appendChild(seg);
     box.appendChild(swatches);
+    box.appendChild(fontPicker);
     box.appendChild(apply);
     box.appendChild(status);
     sync();
@@ -554,6 +602,7 @@
   // ------------------------------------------------------------------ boot
   function boot() {
     wireUpload();
+    wireUploadOptions();
     wireModal();
     $("cancel-btn").addEventListener("click", cancel);
     $("retry-btn").addEventListener("click", retry);

@@ -38,6 +38,25 @@ impl CaptionStyle {
     }
 }
 
+/// Curated for caption legibility. Keep this list strict: every option is a
+/// sturdy display, sans-serif, or highly readable serif face available on the
+/// target desktop rather than a decorative/script font.
+pub const CAPTION_FONTS: [&str; 6] = [
+    "Inter",
+    "Arial",
+    "Helvetica Neue",
+    "Avenir Next",
+    "Verdana",
+    "Georgia",
+];
+
+pub fn caption_font_name(input: &str) -> Option<&'static str> {
+    CAPTION_FONTS
+        .iter()
+        .copied()
+        .find(|font| font.eq_ignore_ascii_case(input.trim()))
+}
+
 /// Default accent as `#RRGGBB`, mirroring the ASS BGR constants below
 /// (consistency is asserted by a unit test).
 pub fn default_accent_hex(style: CaptionStyle) -> &'static str {
@@ -861,6 +880,29 @@ mod tests {
         assert_eq!(CaptionStyle::from_str("clean"), CaptionStyle::Clean);
         assert_eq!(CaptionStyle::from_str("impact"), CaptionStyle::Impact);
         assert_eq!(CaptionStyle::from_str("anything"), CaptionStyle::Impact);
+    }
+
+    #[test]
+    fn curated_caption_fonts_parse_to_canonical_names() {
+        assert_eq!(caption_font_name("inter"), Some("Inter"));
+        assert_eq!(caption_font_name("Helvetica Neue"), Some("Helvetica Neue"));
+        assert_eq!(caption_font_name("avenir next"), Some("Avenir Next"));
+    }
+
+    #[test]
+    fn arbitrary_or_decorative_fonts_are_rejected() {
+        assert_eq!(caption_font_name("Comic Sans MS"), None);
+        assert_eq!(caption_font_name("Brush Script MT"), None);
+        assert_eq!(caption_font_name(""), None);
+    }
+
+    #[test]
+    fn selected_font_is_written_to_the_caption_style() {
+        let words = words_from("readable captions");
+        let mut caption_input = input(&words, 2_000);
+        caption_input.font = "Georgia";
+        let ass = build_ass(&caption_input, CaptionStyle::Impact);
+        assert!(ass.contains("Style: Impact,Georgia,"));
     }
 }
 

@@ -141,6 +141,8 @@ async fn setup_status(State(state): State<AppState>) -> Json<serde_json::Value> 
         "model_mb": model_size,
         "face_model_ok": cfg.face_model.is_some(),
         "caption_font": cfg.caption_font,
+        "caption_fonts": crate::captions::CAPTION_FONTS,
+        "accent_palette": crate::accent::ACCENT_PALETTE,
         "disk_free_gb": disk,
         "data_dir": cfg.data_dir.to_string_lossy(),
         "output_root": cfg.output_root.to_string_lossy(),
@@ -217,6 +219,7 @@ async fn create_project(
     let mut wrote_bytes: u64 = 0;
     let mut caption_style: Option<String> = None;
     let mut accent_color: Option<String> = None;
+    let mut accent_mode = crate::accent::AccentMode::default();
     let mut framing_mode = FramingMode::default();
 
     while let Some(mut field) = multipart
@@ -243,6 +246,22 @@ async fn create_project(
                         format!("#{}", v)
                     });
                 }
+            }
+            continue;
+        }
+        if field.name() == Some("accent_mode") {
+            if let Ok(v) = field.text().await {
+                accent_mode = match crate::accent::AccentMode::parse(&v) {
+                    Some(mode) => mode,
+                    None => {
+                        tokio::fs::remove_dir_all(state.store.project_dir(&id))
+                            .await
+                            .ok();
+                        return Err(bad_request(
+                            "accent_mode must be manual, random, or optimized",
+                        ));
+                    }
+                };
             }
             continue;
         }
@@ -293,6 +312,27 @@ async fn create_project(
             "No file received. Drop one MP4 into the studio.",
         ));
     }
+
+    accent_color = match accent_mode {
+        crate::accent::AccentMode::Random => Some(crate::accent::random_accent().to_string()),
+        crate::accent::AccentMode::Optimized => match crate::accent::optimized_accent_for_video(
+            &state.cfg.ffmpeg,
+            &state.cfg.ffprobe,
+            &dest,
+        )
+        .await
+        {
+            Ok(color) => Some(color.to_string()),
+            Err(error) => {
+                tracing::warn!("video color optimization failed, using default accent: {error:#}");
+                Some(
+                    crate::captions::default_accent_hex(crate::captions::CaptionStyle::Impact)
+                        .to_string(),
+                )
+            }
+        },
+        crate::accent::AccentMode::Manual => accent_color,
+    };
 
     let mut project = Project::new(id.clone(), dest);
     project.caption_style = caption_style;
@@ -473,6 +513,9 @@ struct RestyleIn {
     /// `#RRGGBB`. Omitted = keep the clip's current accent.
     #[serde(default)]
     accent_color: Option<String>,
+    /// Curated caption font. Omitted = keep the clip's current font.
+    #[serde(default)]
+    font: Option<String>,
 }
 
 /// Releases the per-clip restyle lock on every exit path.
@@ -495,8 +538,8 @@ async fn restyle_clip(
     Json(body): Json<RestyleIn>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     use crate::captions::{
-        accent_bgr_for, build_ass, default_accent_hex, hex_to_ass_bgr, words_in_interval,
-        CaptionInput, CaptionStyle,
+        accent_bgr_for, build_ass, caption_font_name, default_accent_hex, hex_to_ass_bgr,
+        words_in_interval, CaptionInput, CaptionStyle,
     };
 
     if !state.store.exists(&id) {
@@ -538,6 +581,8 @@ async fn restyle_clip(
         ));
     }
 
+    let cfg = &state.cfg;
+
     let style = match body.style.as_deref() {
         Some(s) => CaptionStyle::parse_strict(s)
             .ok_or_else(|| bad_request("style must be \"impact\" or \"clean\""))?,
@@ -558,8 +603,16 @@ async fn restyle_clip(
             .clone()
             .unwrap_or_else(|| default_accent_hex(style).to_string()),
     };
+    let caption_font = match body.font.as_deref() {
+        Some(font) => caption_font_name(font)
+            .ok_or_else(|| bad_request("font must be one of the curated caption fonts"))?
+            .to_string(),
+        None => clip
+            .caption_font
+            .clone()
+            .unwrap_or_else(|| cfg.caption_font.clone()),
+    };
 
-    let cfg = &state.cfg;
     let p = state
         .store
         .load_project(&id)
@@ -615,7 +668,7 @@ async fn restyle_clip(
             clip_start_ms: clip.start_ms,
             clip_end_ms: clip.end_ms,
             headline: &clip.headline,
-            font: &cfg.caption_font,
+            font: &caption_font,
             accent_bgr: accent_bgr_for(style, Some(&accent_hex)),
         },
         style,
@@ -656,6 +709,7 @@ async fn restyle_clip(
 
     manifest.clips[idx].caption_style = Some(style.label().to_string());
     manifest.clips[idx].accent_color = Some(accent_hex);
+    manifest.clips[idx].caption_font = Some(caption_font);
     state
         .store
         .save_manifest(&id, &manifest)

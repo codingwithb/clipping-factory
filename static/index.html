@@ -40,8 +40,26 @@
             <span><strong>Fit with background</strong><small>Keep the full frame over blur</small></span>
           </label>
         </fieldset>
+        <fieldset class="accent-choice">
+          <legend>Caption highlight</legend>
+          <label class="accent-option">
+            <input type="radio" name="accent-mode" value="manual" checked>
+            <span class="accent-icon manual"><input id="upload-accent-color" type="color" value="#FFDD00" aria-label="Caption highlight color"></span>
+            <span><strong>Pick a color</strong><small id="upload-accent-hex">#FFDD00</small></span>
+          </label>
+          <label class="accent-option">
+            <input type="radio" name="accent-mode" value="random">
+            <span class="accent-icon random">✦</span>
+            <span><strong>Random</strong><small>A fresh readable color</small></span>
+          </label>
+          <label class="accent-option">
+            <input type="radio" name="accent-mode" value="optimized">
+            <span class="accent-icon optimized">◐</span>
+            <span><strong>Optimized</strong><small>Matches the video palette</small></span>
+          </label>
+        </fieldset>
         <p class="muted small">Supported input: MP4 with at least one audio stream, 20 seconds to 4 hours.<br>
-        Caption style and highlight color? Pick them on each finished clip — restyling takes seconds, not a re-render.</p>
+        You can still change captions, color, and font on each finished clip.</p>
       </div>
       <div id="upload-progress" class="hidden">
         <p id="upload-label">Uploading…</p>

@@ -457,6 +457,7 @@ async fn run(
                         < LOW_CONFIDENCE,
                     caption_style: None,
                     accent_color: None,
+                    caption_font: None,
                 });
             }
             match result {
@@ -586,6 +587,7 @@ async fn run(
                 manifest.clips[i].error = None;
                 manifest.clips[i].caption_style = Some(caption_style.label().to_string());
                 manifest.clips[i].accent_color = Some(accent_hex.clone());
+                manifest.clips[i].caption_font = Some(cfg.caption_font.clone());
                 // Copy into the user-facing output folder (best-effort).
                 if tokio::fs::create_dir_all(&output_dir).await.is_ok() {
                     let dest = output_dir.join(&clip.filename);

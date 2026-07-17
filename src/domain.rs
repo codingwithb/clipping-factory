@@ -309,6 +309,9 @@ pub struct ClipRecord {
     /// Accent color burned into the current render, as `#RRGGBB`.
     #[serde(default)]
     pub accent_color: Option<String>,
+    /// Caption font burned into the current render.
+    #[serde(default)]
+    pub caption_font: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -380,5 +383,6 @@ mod tests {
         assert_eq!(m.clips.len(), 1);
         assert_eq!(m.clips[0].caption_style, None);
         assert_eq!(m.clips[0].accent_color, None);
+        assert_eq!(m.clips[0].caption_font, None);
     }
 }
