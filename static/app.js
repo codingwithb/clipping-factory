@@ -90,6 +90,8 @@
     $("upload-label").textContent = `Uploading ${file.name}…`;
 
     const form = new FormData();
+    const framingMode = document.querySelector('input[name="framing-mode"]:checked').value;
+    form.append("framing_mode", framingMode);
     form.append("file", file, file.name);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/projects");

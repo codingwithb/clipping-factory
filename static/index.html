@@ -29,6 +29,17 @@
         <p class="muted">The original stays on this computer. Clips keep the original conversation intact — one continuous excerpt each, no invented speech.</p>
         <button id="choose-btn" class="primary" type="button">Choose MP4</button>
         <input id="file-input" type="file" accept="video/mp4,.mp4,.m4v" hidden>
+        <fieldset class="framing-choice">
+          <legend>Output framing</legend>
+          <label>
+            <input type="radio" name="framing-mode" value="fill" checked>
+            <span><strong>Fill 9:16</strong><small>Vertical crop, face-following when available</small></span>
+          </label>
+          <label>
+            <input type="radio" name="framing-mode" value="background">
+            <span><strong>Fit with background</strong><small>Keep the full frame over blur</small></span>
+          </label>
+        </fieldset>
         <p class="muted small">Supported input: MP4 with at least one audio stream, 20 seconds to 4 hours.<br>
         Caption style and highlight color? Pick them on each finished clip — restyling takes seconds, not a re-render.</p>
       </div>

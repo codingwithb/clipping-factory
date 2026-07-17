@@ -417,7 +417,7 @@ async fn run(
                     Some(format!("Analyzing framing for clip {} of {}", i + 1, total)),
                 );
                 let frames_dir = store.frames_dir(&id);
-                let layout = match crate::frame::analyze_layout(
+                let analyzed_layout = match crate::frame::analyze_layout(
                     cfg,
                     &src,
                     &source,
@@ -438,6 +438,7 @@ async fn run(
                         LayoutPlan::BlurPad
                     }
                 };
+                let layout = p.framing_mode.apply(analyzed_layout);
                 let c = &vc.candidate;
                 clips.push(ClipRecord {
                     id: crate::util::short_id(),

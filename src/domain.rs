@@ -111,6 +111,9 @@ pub struct Project {
     /// Accent color for the active caption word, as #RRGGBB.
     #[serde(default)]
     pub accent_color: Option<String>,
+    /// Output composition selected before upload.
+    #[serde(default)]
+    pub framing_mode: FramingMode,
 }
 
 impl Project {
@@ -127,6 +130,7 @@ impl Project {
             warning: None,
             caption_style: None,
             accent_color: None,
+            framing_mode: FramingMode::default(),
         }
     }
 
@@ -225,6 +229,28 @@ pub struct SelectionReport {
 // Layout & rendering
 // ---------------------------------------------------------------------------
 
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FramingMode {
+    /// Fill the 9:16 canvas, following a face when one can be tracked.
+    #[default]
+    Fill,
+    /// Preserve the full source over a blurred background.
+    Background,
+}
+
+impl FramingMode {
+    pub fn apply(self, analyzed: LayoutPlan) -> LayoutPlan {
+        match (self, analyzed) {
+            (FramingMode::Fill, tracked @ LayoutPlan::FaceCrop { .. }) => tracked,
+            (FramingMode::Fill, LayoutPlan::BlurPad) => LayoutPlan::FaceCrop {
+                keyframes: vec![CropKey { t_ms: 0, cx: 0.5 }],
+            },
+            (FramingMode::Background, _) => LayoutPlan::BlurPad,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(tag = "mode", rename_all = "snake_case")]
 pub enum LayoutPlan {
@@ -306,6 +332,32 @@ pub fn fmt_ms(ms: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fill_framing_keeps_face_tracking_when_available() {
+        let tracked = LayoutPlan::FaceCrop {
+            keyframes: vec![CropKey { t_ms: 0, cx: 0.42 }],
+        };
+        assert_eq!(FramingMode::Fill.apply(tracked.clone()), tracked);
+    }
+
+    #[test]
+    fn fill_framing_uses_center_crop_when_tracking_is_unavailable() {
+        assert_eq!(
+            FramingMode::Fill.apply(LayoutPlan::BlurPad),
+            LayoutPlan::FaceCrop {
+                keyframes: vec![CropKey { t_ms: 0, cx: 0.5 }],
+            }
+        );
+    }
+
+    #[test]
+    fn background_framing_always_preserves_the_full_source() {
+        let tracked = LayoutPlan::FaceCrop {
+            keyframes: vec![CropKey { t_ms: 0, cx: 0.42 }],
+        };
+        assert_eq!(FramingMode::Background.apply(tracked), LayoutPlan::BlurPad);
+    }
 
     /// Manifests written before per-clip caption styling must still load.
     #[test]

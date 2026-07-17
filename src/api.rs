@@ -217,6 +217,7 @@ async fn create_project(
     let mut wrote_bytes: u64 = 0;
     let mut caption_style: Option<String> = None;
     let mut accent_color: Option<String> = None;
+    let mut framing_mode = FramingMode::default();
 
     while let Some(mut field) = multipart
         .next_field()
@@ -242,6 +243,15 @@ async fn create_project(
                         format!("#{}", v)
                     });
                 }
+            }
+            continue;
+        }
+        if field.name() == Some("framing_mode") {
+            if let Ok(v) = field.text().await {
+                framing_mode = match v.trim() {
+                    "background" => FramingMode::Background,
+                    _ => FramingMode::Fill,
+                };
             }
             continue;
         }
@@ -287,6 +297,7 @@ async fn create_project(
     let mut project = Project::new(id.clone(), dest);
     project.caption_style = caption_style;
     project.accent_color = accent_color;
+    project.framing_mode = framing_mode;
     state
         .store
         .save_project(&project)
