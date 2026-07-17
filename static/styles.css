@@ -97,8 +97,12 @@ header {
 .accent-option > input { margin: 0; }
 .accent-option strong { font-size: 13px; margin: 0; }
 .accent-option small { display: block; color: var(--muted); font-size: 11.5px; }
-.accent-palette { grid-column: 1 / -1; grid-template-columns: auto 1fr; }
-.upload-swatches { display: flex; gap: 9px; margin: 8px 0 5px; }
+.accent-palette { grid-column: 1 / -1; grid-template-columns: 1fr; text-align: center; }
+.accent-palette > input {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.upload-swatches { display: flex; justify-content: center; gap: 9px; margin: 8px 0 5px; }
 .upload-swatch {
   width: 30px; height: 30px; padding: 0; border-radius: 50%;
   border: 2px solid #fff; background: var(--swatch);
