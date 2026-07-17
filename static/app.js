@@ -86,14 +86,35 @@
   }
 
   function wireUploadOptions() {
-    const picker = $("upload-accent-color");
-    picker.value = accentColor;
-    $("upload-accent-hex").textContent = accentColor;
-    picker.addEventListener("input", (e) => {
-      accentColor = e.target.value.toUpperCase();
-      $("upload-accent-hex").textContent = accentColor;
-      document.querySelector('input[name="accent-mode"][value="manual"]').checked = true;
+    const swatchGroup = $("upload-swatches");
+    const swatches = ACCENT_PRESETS.map((color) => {
+      const swatch = document.createElement("button");
+      swatch.type = "button";
+      swatch.className = "upload-swatch";
+      swatch.dataset.color = color;
+      swatch.style.setProperty("--swatch", color);
+      swatch.setAttribute("aria-label", `Use ${color}`);
+      swatchGroup.appendChild(swatch);
+      return swatch;
     });
+    if (!swatches.some((swatch) => swatch.dataset.color === accentColor)) {
+      accentColor = "#FFDD00";
+    }
+    function selectColor(color) {
+      accentColor = color;
+      $("upload-accent-color").value = color;
+      $("upload-accent-hex").textContent = `${color} selected`;
+      for (const swatch of swatches) {
+        const selected = swatch.dataset.color === color;
+        swatch.classList.toggle("active", selected);
+        swatch.setAttribute("aria-pressed", String(selected));
+      }
+      document.querySelector('input[name="accent-mode"][value="manual"]').checked = true;
+    }
+    for (const swatch of swatches) {
+      swatch.addEventListener("click", () => selectColor(swatch.dataset.color));
+    }
+    selectColor(accentColor);
   }
 
   function uploadFile(file) {

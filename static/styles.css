@@ -82,7 +82,7 @@ header {
 .framing-choice strong { font-size: 13px; margin: 0; }
 .framing-choice small { display: block; color: var(--muted); font-size: 11.5px; }
 .accent-choice {
-  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px;
   max-width: 680px; margin: 22px auto 0; padding: 0; border: 0;
 }
 .accent-choice legend { margin: 0 auto 8px; font-size: 12px; color: var(--muted); }
@@ -97,12 +97,19 @@ header {
 .accent-option > input { margin: 0; }
 .accent-option strong { font-size: 13px; margin: 0; }
 .accent-option small { display: block; color: var(--muted); font-size: 11.5px; }
+.accent-palette { grid-column: 1 / -1; grid-template-columns: auto 1fr; }
+.upload-swatches { display: flex; gap: 9px; margin: 8px 0 5px; }
+.upload-swatch {
+  width: 30px; height: 30px; padding: 0; border-radius: 50%;
+  border: 2px solid #fff; background: var(--swatch);
+  box-shadow: 0 0 0 1px rgba(29,29,27,.22); transition: transform .12s, box-shadow .12s;
+}
+.upload-swatch:hover { transform: translateY(-1px); }
+.upload-swatch.active { box-shadow: 0 0 0 2px var(--ink); transform: scale(1.06); }
 .accent-icon {
   width: 32px; height: 32px; display: grid; place-items: center;
   border-radius: 50%; color: #fff; font-size: 17px; overflow: hidden;
 }
-.accent-icon.manual { background: #ffdd00; }
-.accent-icon.manual input { width: 46px; height: 46px; padding: 0; border: 0; cursor: pointer; }
 .accent-icon.random { background: conic-gradient(#ff4f4f, #ffdd00, #7cff4f, #4fb5ff, #c77dff, #ff4f4f); }
 .accent-icon.optimized { background: linear-gradient(135deg, #171717 50%, #ffdd00 50%); }
 .seg { display: inline-flex; border: 1px solid #8a8a84; border-radius: 6px; overflow: hidden; }

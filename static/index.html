@@ -42,11 +42,15 @@
         </fieldset>
         <fieldset class="accent-choice">
           <legend>Caption highlight</legend>
-          <label class="accent-option">
+          <div class="accent-option accent-palette">
             <input type="radio" name="accent-mode" value="manual" checked>
-            <span class="accent-icon manual"><input id="upload-accent-color" type="color" value="#FFDD00" aria-label="Caption highlight color"></span>
-            <span><strong>Pick a color</strong><small id="upload-accent-hex">#FFDD00</small></span>
-          </label>
+            <div>
+              <strong>Choose a color</strong>
+              <div id="upload-swatches" class="upload-swatches" role="group" aria-label="Caption highlight colors"></div>
+              <small id="upload-accent-hex">#FFDD00 selected</small>
+              <input id="upload-accent-color" type="hidden" value="#FFDD00">
+            </div>
+          </div>
           <label class="accent-option">
             <input type="radio" name="accent-mode" value="random">
             <span class="accent-icon random">✦</span>
